@@ -1,0 +1,23 @@
+{
+  "name": "crypto-trade-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://vadimberkut@bitbucket.org/vadimberkut/crypto-trade-bot.git"
+  },
+  "author": "Vadym Berkut",
+  "license": "ISC",
+  "homepage": "https://bitbucket.org/vadimberkut/crypto-trade-bot#readme",
+  "dependencies": {
+    "axios": "^0.16.2",
+    "class-validator": "^0.7.2",
+    "data-model": "0.0.2",
+    "express": "^4.15.4",
+    "ws": "^3.2.0"
+  }
+}
