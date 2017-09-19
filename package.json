@@ -18,6 +18,8 @@
     "class-validator": "^0.7.2",
     "data-model": "0.0.2",
     "express": "^4.15.4",
+    "lodash": "^4.17.4",
+    "moment": "^2.18.1",
     "ws": "^3.2.0"
   }
 }
