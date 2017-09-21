@@ -3,7 +3,9 @@ const app = express();
 const port = 3000;
 
 const BitfinexBot = require('./bitfinex/bitfinexBot.js');
-const bitfinexBot = new BitfinexBot();
+const bitfinexBot = new BitfinexBot({
+
+});
 bitfinexBot.start();
 
 // log
@@ -64,3 +66,19 @@ const bitfinexApi = require('./bitfinex/bitfinexApi.js');
 // bitfinexApi.books('fUSD').then((data)=>{
     
 // });
+
+
+// test algorithm
+const fs = require('fs');
+const path = require('path');
+const CirclePathAlgorithm = require('./bitfinex/circlePathAlgorithm.js');
+const BookStore = require('./bitfinex/stores/bookStore.js');
+let bookStore = new BookStore();
+// let fileName = path.join(__dirname, '/logs/bitfinex/bookStore', 'tmp-ws-book-20170921102547.log'); // IOTUSD
+let fileName = path.join(__dirname, '/logs/bitfinex/bookStore', 'tmp-ws-book-20170921110644.log'); // ALL
+let json = fs.readFileSync(fileName, 'utf8');
+let obj = JSON.parse(json);
+bookStore.initBookFromObject(obj);
+let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT');
+circlePathAlgorithm.findPath();
+circlePathAlgorithm.saveToFile();

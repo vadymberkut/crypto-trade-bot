@@ -11,8 +11,25 @@ let BookResponseModel = require('./apiModels/BookResponseModel.js');
 
 const BookStore = require('./stores/bookStore.js');
 
+const bitfinexSymbols = [
+    'tBTCUSD', 
+    'tBCHUSD', 'tBCHBTC', 'tBCHETH',
+    'tETHUSD', 'tETHBTC',
+    'tETCUSD', 'tETCBTC',
+    'tLTCUSD', 'tLTCBTC',
+    'tIOTUSD', 'tIOTBTC', 'tIOTETH',
+    'tNEOUSD', 'tNEOBTC', 'tNEOETH',
+    'tSANUSD', 'tSANBTC', 'tSANETH',
+    'tXMRUSD', 'tXMRBTC',
+    'tOMGUSD', 'tOMGBTC', 'tOMGETH',
+    'tZECUSD', 'tZECBTC',
+    'tDSHUSD', 'tDSHBTC',
+    'tXRPUSD', 'tXRPBTC',
+    'tEOSUSD', 'tEOSBTC', 'tEOSETH'
+];
+
 class BitfinexBot {
-    constructor(props){
+    constructor(config){
         this.connected = false;
         this.connecting = false;
         this.webSocketConfig = {
@@ -22,6 +39,10 @@ class BitfinexBot {
         
         // stores
         this.bookStore = new BookStore();
+        this.saveBookInterval = setInterval(() => {
+            this.bookStore.saveBook();
+        // }, 60000);
+        }, 10000);
     }
 
     __connect(){
@@ -40,7 +61,10 @@ class BitfinexBot {
             this.connected = true;
 
             // subscribe to channels
-            this._subscribeToBook('tBTCUSD');
+            // this._subscribeToBook('tBTCUSD');
+            // this._subscribeToBook('tETHUSD');
+            // this._subscribeToBook('tIOTUSD');
+            this._subscribeToAllBooks();
             // ...
         };
 
@@ -56,6 +80,7 @@ class BitfinexBot {
         this.wss.onmessage = (response) => {
             // msg = JSON.parse(msg)
             let msg = JSON.parse(response.data);
+            // console.log('ws: new message: ', msg);
 
             if (msg.event){
                 if(msg.event == 'subscribed'){
@@ -63,6 +88,9 @@ class BitfinexBot {
                     console.log(`subscribed to ${msg.channel}_${msg.symbol}`);
                     let name = `${msg.channel}_${msg.symbol}`;
                     this.subscribtion.confirm(name, msg);
+                }
+                if(msg.event == 'error'){
+                    console.error(`error (${msg.channel}_${msg.symbol}): `, msg.msg);
                 }
                 return;
             };
@@ -99,6 +127,10 @@ class BitfinexBot {
 
     // WEBSOCKET PUBLIC CHANNELS
     _subscribeToBook(symbol){
+        if(bitfinexSymbols.indexOf(symbol) === -1){
+            console.warn(`can't subscribe to book '${symbol}'`);
+            return;
+        }
         let request = { 
             event: 'subscribe',
             channel: 'book',
@@ -125,6 +157,11 @@ class BitfinexBot {
 
         // send
         this.wss.send(JSON.stringify(request));
+    }
+    _subscribeToAllBooks(){
+        bitfinexSymbols.forEach((symbol) => {
+            this._subscribeToBook(symbol);
+        });
     }
 
     _unsubscribeFromAll(){

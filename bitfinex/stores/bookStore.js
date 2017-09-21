@@ -1,15 +1,15 @@
 const _ = require('lodash');
 // const async = require('async');
 const fs = require('fs');
+const path = require('path');
 const moment = require('moment');
+
+const logfile = path.join(__dirname, '../../logs/bitfinex/bookStore/ws-book-err.log');
+
 
 module.exports = class BookStore {
     constructor(){
         this.BOOK = {};
-
-        this.saveBookInterval = setInterval(() => {
-            this.saveBook();
-        }, 60000);
     }
 
     initSymbolBookIfNotExists(symbol){
@@ -21,6 +21,11 @@ module.exports = class BookStore {
                 mcount: 0
             };
         }
+    }
+
+    initBookFromObject(obj){
+        if(obj)
+            this.BOOK = obj;
     }
 
     // hen new data received
@@ -60,7 +65,7 @@ module.exports = class BookStore {
               }
               if (!found) {
                 let logMsg = "[" + moment().format() + "] " + pair + " | " + JSON.stringify(pp) + " BOOK delete fail side not found\n";
-                // fs.appendFileSync(logfile, logMsg);
+                fs.appendFileSync(logfile, logMsg);
                 console.warn(logMsg);
               }
             } 
@@ -89,7 +94,7 @@ module.exports = class BookStore {
             //console.log("num price points", side, prices.length)
         });
 
-        this.BOOK[symbol].mcnt++
+        this.BOOK[symbol].mcount++;
         this.checkCross(symbol, model);
     }
 
@@ -97,11 +102,10 @@ module.exports = class BookStore {
         let bid = this.BOOK[symbol].psnap.bids[0];
         let ask = this.BOOK[symbol].psnap.asks[0];
         if (bid >= ask) {
-            const logfile = __dirname + '/logs/ws-book-err.log';
-            let lm = [moment.utc().format(), "bid(" + bid + ")>=ask(" + ask + ")"];
+            let lm = [moment.utc().format(), symbol, "bid(" + bid + ")>=ask(" + ask + ")"];
             let logMsg = lm.join(' / ') + "\r\n";
             fs.appendFileSync(logfile, logMsg);
-            console.warn(logMsg);
+            // console.warn(logMsg);
         }
     }
 
@@ -109,7 +113,12 @@ module.exports = class BookStore {
         if(!this.BOOK)
             return;
         console.log('bookStore: save');
-        const now = moment.utc().format('YYYYMMDDHHmmss')
-        fs.writeFileSync(__dirname + "/logs/tmp-ws-book-" + now + '.log', JSON.stringify(this.BOOK));
+        const now = moment.utc().format('YYYYMMDDHHmmss');
+        const savefile = path.join(__dirname, '../../logs/bitfinex/bookStore/' + 'tmp-ws-book-' + now + '.log');
+        fs.writeFileSync(savefile, JSON.stringify(this.BOOK));
+    }
+
+    getStoredSymbols(){
+        return Object.keys(this.BOOK).filter((s) => !!s);
     }
 }
