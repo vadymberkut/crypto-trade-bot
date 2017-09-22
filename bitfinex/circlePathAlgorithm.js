@@ -7,18 +7,23 @@ const MIN_PATH_LENGTH = 3;
 const MAX_PATH_LENGTH = 6;
 
 module.exports = class CirclePathAlgorithm {
-    constructor(bookStore, startState, minPathLength = 3, maxPathLength = 5){
+    constructor(bookStore, startState, maxStartStateAmount, minPathLength = 3, maxPathLength = 5){
+        if(!bookStore){
+            throw new Error(`CirclePathAlgorithm: bookStore can't be null or empty`);
+        }
+        if(!maxStartStateAmount){
+            throw new Error(`CirclePathAlgorithm: maxStartStateAmount can't be null or empty`);
+        }
         if(minPathLength < MIN_PATH_LENGTH){
             throw new Error(`CirclePathAlgorithm: minPathLength can't be less that ${MIN_PATH_LENGTH}`);
         }
         if(maxPathLength > MAX_PATH_LENGTH){
             throw new Error(`CirclePathAlgorithm: maxPathLength can't be grater that ${MAX_PATH_LENGTH}`);
         }
-        if(!bookStore){
-            throw new Error(`CirclePathAlgorithm: bookStore can't be null or empty`);
-        }
+        
         this.bookStore = bookStore;
         this.startState = startState;
+        this.maxStartStateAmount = maxStartStateAmount;
         this.minPathLength = minPathLength;
         this.maxPathLength = maxPathLength;
         
@@ -87,12 +92,16 @@ module.exports = class CirclePathAlgorithm {
 
         // get final path list (not nested structure) from result
         let solution = this._buildSolution(this.pathFindResult);
+        let processedSolution = this._processSolution(solution);
 
         // filter circular pathes. e.g. IOT -> USD -> IOT -> USD -> IOT
         // ...
 
         //determine profit pathes taking into account token max amount or suggest pathes with specified amount
-        // ...
+        let profitSolutions = processedSolution[0].filter((i) => i.estimatedProfit >= 0).map((i) => i.estimatedProfit);
+        let min = _.min(profitSolutions);
+        let max = _.max(profitSolutions);
+        let avg = _.sum(profitSolutions) / profitSolutions.length;
 
         return this.pathFindResult;
     }
@@ -187,7 +196,6 @@ module.exports = class CirclePathAlgorithm {
         let results = pathFindResult.map((r) => {
             if(r.isCirclePathEnd === true){
                 return r.state;
-                // return [r.state];
             }
             else{
                 let nextResults = this._buildSolution(r.nextStates);
@@ -207,6 +215,87 @@ module.exports = class CirclePathAlgorithm {
             }
         });
         return results;
+    }
+
+    _processSolution(solution){
+        if(solution === null)
+            return null;
+        let result = solution.map((s) => {
+            return s.map((path) => {
+                let stateInstructions = path.map((state, i) => {
+                    let nextState = null;
+                    if(i !== path.length - 1)
+                        nextState = path[i + 1];
+
+                    // symbol, e.g. tIOTUSD
+                    let transition = null;
+                    if(i !== path.length - 1){
+                        transition = this.bookStore.getSymbol(state, nextState);
+                    }
+    
+                    // determine action: buy/sell
+                    let action = null;
+                    if(i !== path.length - 1){
+                        action = this.bookStore.getSymbolAction(transition, state);
+                    }
+    
+                    // determine best book value we can buy/sell by market using bookStore
+                    let bestBookValue = this.bookStore.getBestBookValueForAction(transition, action);
+    
+                    return {
+                        isStart: i === 0,
+                        isEnd: i === path.length - 1,
+                        state: state,
+                        nextState: nextState,
+                        transition: transition,
+                        action: action,
+                        bestBookValue: bestBookValue
+                    };
+                });
+
+                // TODO - THIS PART ISN'T COMPLETED
+                // simulate path and estimate profit
+                let estimatedProfit = 0; // it start state
+                let availiblePassAmount = this.maxStartStateAmount;
+                let passedAmound = 0;
+                let bestBookValues = stateInstructions.map(si => si.bestBookValue);
+                let result = stateInstructions.reduce((prevInstrTotal, si, i) => {
+                    let {isStart, isEnd, action, bestBookValue, nextState, state, transition} = si;
+
+                    if(isEnd){
+                        // reached the end - do nothing
+                        return prevInstrTotal;
+                    }
+
+                    let {AMOUNT, COUNT, PRICE, type} = bestBookValue;
+                    let total = AMOUNT * PRICE;
+                    // simulate action
+                    let resultTotal = 0;
+                    if(isStart){
+                        resultTotal = AMOUNT * PRICE;
+                    }
+                    else{
+                        if(action == 'buy')
+                        resultTotal = prevInstrTotal / PRICE;
+                        else if(action == 'sell'){
+                            resultTotal = prevInstrTotal * PRICE;
+                        }
+                    }
+                    return resultTotal;
+                }, 0);
+                estimatedProfit = (result - stateInstructions[0].bestBookValue.AMOUNT);
+
+                return {
+                    path: path,
+                    instructions: stateInstructions,
+                    pathLengthActions: path.length - 1, 
+                    pathLengthStates: path.length, 
+                    estimatedProfit: estimatedProfit,
+                    // availiblePassAmount: ,
+                };
+            });
+        });
+        return result;
     }
 
     saveToFile(){

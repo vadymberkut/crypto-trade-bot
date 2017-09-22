@@ -6,7 +6,7 @@ const BitfinexBot = require('./bitfinex/bitfinexBot.js');
 const bitfinexBot = new BitfinexBot({
 
 });
-bitfinexBot.start();
+// bitfinexBot.start();
 
 // log
 app.use((request, response, next) => {
@@ -79,6 +79,6 @@ let fileName = path.join(__dirname, '/logs/bitfinex/bookStore', 'tmp-ws-book-201
 let json = fs.readFileSync(fileName, 'utf8');
 let obj = JSON.parse(json);
 bookStore.initBookFromObject(obj);
-let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT');
+let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT', 1000);
 circlePathAlgorithm.findPath();
 circlePathAlgorithm.saveToFile();

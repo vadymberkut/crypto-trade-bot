@@ -121,4 +121,48 @@ module.exports = class BookStore {
     getStoredSymbols(){
         return Object.keys(this.BOOK).filter((s) => !!s);
     }
+
+    getSymbol(assetName1, assetName2){
+        let symbols = this.getStoredSymbols();
+        let symbol = symbols.find((s) => {
+            let regex1 = new RegExp(`t${assetName1}${assetName2}`);
+            let regex2 = new RegExp(`t${assetName2}${assetName1}`);
+            if(regex1.test(s) || regex2.test(s)){
+                return true;
+            }
+            return false;
+        });
+        return symbol;
+    }
+
+    // tIOTUSD, IOT -> sell
+    // tIOTUSD, USD -> buy
+    getSymbolAction(symbol, assetName){
+        let regex1 = new RegExp(`^t${assetName}[A-Z]{3}$`);
+        let regex2 = new RegExp(`^t\[A-Z]{3}${assetName}$`);
+        let action = null;
+        
+        if(regex1.test(symbol)){
+            action = 'sell';
+        }
+        else if(regex2.test(symbol)){
+            action = 'buy';
+        }
+        return action;
+    }
+
+    // symbol - tIOTUSD
+    // action - buy | sell
+    getBestBookValueForAction(symbol, action){
+        let symbolBook = this.BOOK[symbol];
+        if(!symbol || !symbolBook || !action || (action != 'buy' && action != 'sell')){
+            return null;
+        }
+        let side = action == 'buy' ? 'asks' : 'bids';
+
+        // take best ask or bid depending on action
+        let bestPrice = symbolBook.psnap[side][0];
+        let bestBookValue = symbolBook[side][bestPrice];
+        return bestBookValue;
+    }
 }
