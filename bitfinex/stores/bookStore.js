@@ -165,4 +165,37 @@ module.exports = class BookStore {
         let bestBookValue = symbolBook[side][bestPrice];
         return bestBookValue;
     }
+
+    tryConvertToUsdUsingBestPrice(assetName, amount){
+        if(assetName == 'USD')
+            return amount;
+        let regex1 = new RegExp(`^t${assetName}USD$`);
+        let symbols = this.getStoredSymbols();
+        let found = symbols.filter((s) => regex1.test(s));
+        if(found && found.length === 1){
+            let symbol = found[0];
+            let  side = 'bids';
+            let bestPrice = this.BOOK[symbol].psnap[side][0];
+            let totalInUsd = amount * bestPrice;
+            return totalInUsd;
+        }
+        return null;
+    }
+
+    // returns amount
+    tryConvertFromUsdUsingBestPrice(totalUsd, assetName){
+        if(assetName == 'USD')
+            return totalUsd;
+        let regex1 = new RegExp(`^t${assetName}USD$`);
+        let symbols = this.getStoredSymbols();
+        let found = symbols.filter((s) => regex1.test(s));
+        if(found && found.length === 1){
+            let symbol = found[0];
+            let  side = 'asks';
+            let bestPrice = this.BOOK[symbol].psnap[side][0];
+            let assetAmount = totalUsd / bestPrice;
+            return assetAmount;
+        }
+        return null;
+    }
 }

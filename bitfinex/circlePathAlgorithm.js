@@ -98,10 +98,12 @@ module.exports = class CirclePathAlgorithm {
         // ...
 
         //determine profit pathes taking into account token max amount or suggest pathes with specified amount
-        let profitSolutions = processedSolution[0].filter((i) => i.estimatedProfit >= 0).map((i) => i.estimatedProfit);
-        let min = _.min(profitSolutions);
-        let max = _.max(profitSolutions);
-        let avg = _.sum(profitSolutions) / profitSolutions.length;
+        let profitSolutions = processedSolution[0].filter((i) => i.estimatedProfit >= 0);
+        let profitSolutionsProfit = profitSolutions.map((i) => i.estimatedProfit);
+        let usedPassAmounts = profitSolutions.map((i) => i.usedPassAmount);
+        let min = _.min(profitSolutionsProfit);
+        let max = _.max(profitSolutionsProfit);
+        let avg = _.sum(profitSolutionsProfit) / profitSolutionsProfit.length;
 
         return this.pathFindResult;
     }
@@ -253,10 +255,35 @@ module.exports = class CirclePathAlgorithm {
                     };
                 });
 
+                // determine max amount of start state (asset) to accomplish path in best prices
+                let stateTotalsInUsd = [];
+                stateInstructions.forEach((si, i) => {
+                    let {isStart, isEnd, action, bestBookValue, nextState, state, transition} = si;
+
+                    if(isEnd){
+                        // reached the end - do nothing
+                        return;
+                    } 
+
+                    let {AMOUNT, COUNT, PRICE, type} = bestBookValue;
+
+                    // save cost of next state in usd
+                    let nextStateInUsd = this.bookStore.tryConvertToUsdUsingBestPrice(state, AMOUNT);
+                    if(nextStateInUsd === null){
+                        // can't convert
+                        throw new Error(`CirclePathAlgorithm: can't convert ${nextState} to USD`);
+                    }
+                    stateTotalsInUsd.push(nextStateInUsd);
+                });
+                let minStateTotalInUsd = _.min(stateTotalsInUsd);
+                let minStateAmount = this.bookStore.tryConvertFromUsdUsingBestPrice(minStateTotalInUsd, this.startState);
+
                 // TODO - THIS PART ISN'T COMPLETED
                 // simulate path and estimate profit
                 let estimatedProfit = 0; // it start state
-                let availiblePassAmount = this.maxStartStateAmount;
+                let desiredPassAmount = this.maxStartStateAmount;
+                let realPassAmount = minStateAmount * 0.8;
+                let usedPassAmount = Math.min(desiredPassAmount, realPassAmount);
                 let passedAmound = 0;
                 let bestBookValues = stateInstructions.map(si => si.bestBookValue);
                 let result = stateInstructions.reduce((prevInstrTotal, si, i) => {
@@ -265,14 +292,16 @@ module.exports = class CirclePathAlgorithm {
                     if(isEnd){
                         // reached the end - do nothing
                         return prevInstrTotal;
-                    }
+                    } 
 
                     let {AMOUNT, COUNT, PRICE, type} = bestBookValue;
                     let total = AMOUNT * PRICE;
+
                     // simulate action
                     let resultTotal = 0;
                     if(isStart){
-                        resultTotal = AMOUNT * PRICE;
+                        // resultTotal = AMOUNT * PRICE;
+                        resultTotal = usedPassAmount * PRICE;
                     }
                     else{
                         if(action == 'buy')
@@ -283,7 +312,8 @@ module.exports = class CirclePathAlgorithm {
                     }
                     return resultTotal;
                 }, 0);
-                estimatedProfit = (result - stateInstructions[0].bestBookValue.AMOUNT);
+                // estimatedProfit = (result - stateInstructions[0].bestBookValue.AMOUNT);
+                estimatedProfit = (result - usedPassAmount);
 
                 return {
                     path: path,
@@ -291,7 +321,8 @@ module.exports = class CirclePathAlgorithm {
                     pathLengthActions: path.length - 1, 
                     pathLengthStates: path.length, 
                     estimatedProfit: estimatedProfit,
-                    // availiblePassAmount: ,
+                    usedPassAmount: usedPassAmount,
+                    stateTotalsInUsd: stateTotalsInUsd
                 };
             });
         });

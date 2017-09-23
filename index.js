@@ -79,6 +79,6 @@ let fileName = path.join(__dirname, '/logs/bitfinex/bookStore', 'tmp-ws-book-201
 let json = fs.readFileSync(fileName, 'utf8');
 let obj = JSON.parse(json);
 bookStore.initBookFromObject(obj);
-let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT', 1000);
+let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT', 5000);
 circlePathAlgorithm.findPath();
 circlePathAlgorithm.saveToFile();
