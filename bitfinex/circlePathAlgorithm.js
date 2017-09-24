@@ -5,9 +5,10 @@ let moment = require('moment');
 
 const MIN_PATH_LENGTH = 3;
 const MAX_PATH_LENGTH = 6;
+const MIN_PATH_PROFIT = 0.10;
 
 module.exports = class CirclePathAlgorithm {
-    constructor(bookStore, startState, maxStartStateAmount, minPathLength = 3, maxPathLength = 5){
+    constructor(bookStore, startState, maxStartStateAmount, minPathLength = 3, maxPathLength = 5, minPathProfitUsd = 0.50){
         if(!bookStore){
             throw new Error(`CirclePathAlgorithm: bookStore can't be null or empty`);
         }
@@ -20,12 +21,16 @@ module.exports = class CirclePathAlgorithm {
         if(maxPathLength > MAX_PATH_LENGTH){
             throw new Error(`CirclePathAlgorithm: maxPathLength can't be grater that ${MAX_PATH_LENGTH}`);
         }
+        if(!minPathProfitUsd || minPathProfitUsd < MIN_PATH_PROFIT){
+            throw new Error(`CirclePathAlgorithm: minPathProfitUsd can't be empty or less than ${MIN_PATH_PROFIT}`);
+        }
         
         this.bookStore = bookStore;
         this.startState = startState;
         this.maxStartStateAmount = maxStartStateAmount;
         this.minPathLength = minPathLength;
         this.maxPathLength = maxPathLength;
+        this.minPathProfitUsd = minPathProfitUsd;
         
         this.graphStates = null;
         this.graphStateTransitions = null;
@@ -91,21 +96,32 @@ module.exports = class CirclePathAlgorithm {
         this.pathFindCount = this.countPathes(this.pathFindResult);
 
         // get final path list (not nested structure) from result
-        let solution = this._buildSolution(this.pathFindResult);
-        let processedSolution = this._processSolution(solution);
+        let solutions = this._buildSolution(this.pathFindResult);
+        let processedSolutions = this._processSolution(solutions);
+
+        // take first solution - because now we allow ONLY 1 start state so ONLY 1 solution for it
+        let processedSolution = processedSolutions[0];
 
         // filter circular pathes. e.g. IOT -> USD -> IOT -> USD -> IOT
-        // ...
+        // i.e. where start state occurs more than twice (should oonly at start and end)
+        processedSolution = processedSolution.filter((ps) => {
+            return ps.path.filter(p => p == this.startState).length == 2;
+        });
 
         //determine profit pathes taking into account token max amount or suggest pathes with specified amount
-        let profitSolutions = processedSolution[0].filter((i) => i.estimatedProfit >= 0);
+        let profitSolutions = processedSolution.filter((i) => i.estimatedProfit >= 0 && i.estimatedProfitUsd >= this.minPathProfitUsd);
+        profitSolutions = _.orderBy(profitSolutions, i => i.estimatedProfit, 'desc'); //order by profit DESC
         let profitSolutionsProfit = profitSolutions.map((i) => i.estimatedProfit);
+        let profitSolutionsProfitUsd = profitSolutions.map((i) => i.estimatedProfitUsd);
         let usedPassAmounts = profitSolutions.map((i) => i.usedPassAmount);
-        let min = _.min(profitSolutionsProfit);
-        let max = _.max(profitSolutionsProfit);
-        let avg = _.sum(profitSolutionsProfit) / profitSolutionsProfit.length;
+        let minProfit = _.min(profitSolutionsProfit);
+        let maxProfit = _.max(profitSolutionsProfit);
+        let avgProfit = _.sum(profitSolutionsProfit) / profitSolutionsProfit.length;
 
-        return this.pathFindResult;
+        return {
+            solution: profitSolutions,
+            usedPassAmounts: usedPassAmounts,
+        };
     }
 
     _findPath(graphStates, pathLength = -1){
@@ -277,16 +293,20 @@ module.exports = class CirclePathAlgorithm {
                 });
                 let minStateTotalInUsd = _.min(stateTotalsInUsd);
                 let minStateAmount = this.bookStore.tryConvertFromUsdUsingBestPrice(minStateTotalInUsd, this.startState);
+                if(minStateAmount === null){
+                    // can't convert
+                    throw new Error(`CirclePathAlgorithm: can't convert USD to ${this.startState}`);
+                }
 
                 // TODO - THIS PART ISN'T COMPLETED
                 // simulate path and estimate profit
                 let estimatedProfit = 0; // it start state
+                let estimatedProfitUsd = 0; // it USD
                 let desiredPassAmount = this.maxStartStateAmount;
                 let realPassAmount = minStateAmount * 0.8;
                 let usedPassAmount = Math.min(desiredPassAmount, realPassAmount);
-                let passedAmound = 0;
-                let bestBookValues = stateInstructions.map(si => si.bestBookValue);
-                let result = stateInstructions.reduce((prevInstrTotal, si, i) => {
+                // let bestBookValues = stateInstructions.map(si => si.bestBookValue);
+                let obtainedAmount = stateInstructions.reduce((prevInstrTotal, si, i) => {
                     let {isStart, isEnd, action, bestBookValue, nextState, state, transition} = si;
 
                     if(isEnd){
@@ -304,16 +324,21 @@ module.exports = class CirclePathAlgorithm {
                         resultTotal = usedPassAmount * PRICE;
                     }
                     else{
-                        if(action == 'buy')
-                        resultTotal = prevInstrTotal / PRICE;
+                        if(action == 'buy'){
+                            resultTotal = prevInstrTotal / PRICE;
+                        }
                         else if(action == 'sell'){
                             resultTotal = prevInstrTotal * PRICE;
                         }
                     }
                     return resultTotal;
                 }, 0);
-                // estimatedProfit = (result - stateInstructions[0].bestBookValue.AMOUNT);
-                estimatedProfit = (result - usedPassAmount);
+                estimatedProfit = (obtainedAmount - usedPassAmount); // amount of start state
+                estimatedProfitUsd = this.bookStore.tryConvertToUsdUsingBestPrice(this.startState, estimatedProfit);
+                if(minStateAmount === null){
+                    // can't convert
+                    throw new Error(`CirclePathAlgorithm: can't convert ${this.startState} to USD`);
+                }
 
                 return {
                     path: path,
@@ -321,8 +346,10 @@ module.exports = class CirclePathAlgorithm {
                     pathLengthActions: path.length - 1, 
                     pathLengthStates: path.length, 
                     estimatedProfit: estimatedProfit,
+                    estimatedProfitUsd: estimatedProfitUsd,
                     usedPassAmount: usedPassAmount,
-                    stateTotalsInUsd: stateTotalsInUsd
+                    stateTotalsInUsd: stateTotalsInUsd,
+                    minStateTotalInUsd: minStateTotalInUsd,
                 };
             });
         });

@@ -109,13 +109,22 @@ module.exports = class BookStore {
         }
     }
 
-    saveBook() {
+    saveBookSync() {
         if(!this.BOOK)
             return;
-        console.log('bookStore: save');
+        console.log('bookStore: save sync ');
         const now = moment.utc().format('YYYYMMDDHHmmss');
         const savefile = path.join(__dirname, '../../logs/bitfinex/bookStore/' + 'tmp-ws-book-' + now + '.log');
         fs.writeFileSync(savefile, JSON.stringify(this.BOOK));
+    }
+
+    saveBook() {
+        if(!this.BOOK)
+            return;
+        console.log('bookStore: save async');
+        const now = moment.utc().format('YYYYMMDDHHmmss');
+        const savefile = path.join(__dirname, '../../logs/bitfinex/bookStore/' + 'tmp-ws-book-' + now + '.log');
+        fs.writeFile(savefile, JSON.stringify(this.BOOK));
     }
 
     getStoredSymbols(){

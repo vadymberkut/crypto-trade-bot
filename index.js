@@ -1,4 +1,5 @@
 const express = require('express');
+const _ = require('lodash');
 const app = express();
 const port = 3000;
 
@@ -73,6 +74,7 @@ const fs = require('fs');
 const path = require('path');
 const CirclePathAlgorithm = require('./bitfinex/circlePathAlgorithm.js');
 const BookStore = require('./bitfinex/stores/bookStore.js');
+
 let bookStore = new BookStore();
 // let fileName = path.join(__dirname, '/logs/bitfinex/bookStore', 'tmp-ws-book-20170921102547.log'); // IOTUSD
 let fileName = path.join(__dirname, '/logs/bitfinex/bookStore', 'tmp-ws-book-20170921110644.log'); // ALL
@@ -82,3 +84,42 @@ bookStore.initBookFromObject(obj);
 let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT', 5000);
 circlePathAlgorithm.findPath();
 circlePathAlgorithm.saveToFile();
+
+// run on all store logs
+let dir = './logs/bitfinex/bookStore';
+let logFiles = fs.readdirSync(dir);
+logFiles = logFiles.filter(f => f.indexOf('ws-book-err') === -1);
+console.log(`Start processing files`);
+
+let startState = 'IOT';
+let profits = [];
+let profitsUsd = [];
+
+logFiles.forEach((logFile, i) => {
+    // console.log(`Processing file: ${logFile}`);
+
+    logFile = path.join(dir ,logFile);
+    let json = fs.readFileSync(logFile, 'utf8');
+    let obj = JSON.parse(json);
+    let bookStore = new BookStore();
+    bookStore.initBookFromObject(obj);
+    let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, startState, 5000, 3, 5, 0.5);
+    try{
+        let result = circlePathAlgorithm.findPath();
+        // circlePathAlgorithm.saveToFile();
+    
+        // take 1 profit
+        let profit = result.solution[0].estimatedProfit;
+        let profitUsd = result.solution[0].estimatedProfitUsd;
+        profits.push(profit);
+        profitsUsd.push(profitUsd);
+        console.log(`file ${i+1}: +${profit} ${startState}, +${profitUsd} USD`);
+    }
+    catch(e){
+        // console.log(`file ${i+1}: error - `, e);
+    }
+});
+console.log(`End processing files`);
+console.log('TOTAL:');
+console.log(`${startState}: min=${_.min(profits)}, max=${_.max(profits)}, avg=${_.sum(profits)/profits.length}, sum=${_.sum(profits)}`);
+console.log(`USD: min=${_.min(profitsUsd)}, max=${_.max(profitsUsd)}, avg=${_.sum(profitsUsd)/profitsUsd.length}, sum=${_.sum(profitsUsd)}`);

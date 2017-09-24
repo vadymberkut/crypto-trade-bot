@@ -5,6 +5,8 @@
 // Note: API will truncate price with precision > 5
 
 const WebSocket = require('ws');
+const crypto = require('crypto');
+
 const bitfinexApi = require('./bitfinexApi.js');
 
 let BookResponseModel = require('./apiModels/BookResponseModel.js');
@@ -30,6 +32,9 @@ const bitfinexSymbols = [
 
 class BitfinexBot {
     constructor(config){
+        this.apiKey = config.apiKey;
+        this.apiSecret = config.apiSecret;
+
         this.connected = false;
         this.connecting = false;
         this.webSocketConfig = {
@@ -41,8 +46,8 @@ class BitfinexBot {
         this.bookStore = new BookStore();
         this.saveBookInterval = setInterval(() => {
             this.bookStore.saveBook();
-        // }, 60000);
-        }, 10000);
+        }, 60000);
+        // }, 5000);
     }
 
     __connect(){
@@ -59,6 +64,9 @@ class BitfinexBot {
             console.log('WS open');
             this.connecting = false;
             this.connected = true;
+
+            // auth
+            this._auth();
 
             // subscribe to channels
             // this._subscribeToBook('tBTCUSD');
@@ -78,9 +86,15 @@ class BitfinexBot {
         };
 
         this.wss.onmessage = (response) => {
-            // msg = JSON.parse(msg)
-            let msg = JSON.parse(response.data);
-            // console.log('ws: new message: ', msg);
+            let msg;
+            try {
+                msg = JSON.parse(response.data);
+            } catch (e) {
+                console.error('[bfx ws2 error] received invalid json')
+                console.error('[bfx ws2 error]', response.data)
+                console.trace()
+                return;
+            }
 
             if (msg.event){
                 if(msg.event == 'subscribed'){
@@ -89,12 +103,23 @@ class BitfinexBot {
                     let name = `${msg.channel}_${msg.symbol}`;
                     this.subscribtion.confirm(name, msg);
                 }
+                if(msg.event == 'auth'){
+                    if(msg.status != 'OK'){
+                        console.error(`auth error`, msg);
+                        return;
+                    }
+                    // all is ok
+                    console.log(`auth OK`, msg);
+                }
                 if(msg.event == 'error'){
                     console.error(`error (${msg.channel}_${msg.symbol}): `, msg.msg);
                 }
                 return;
             };
-            if (msg[1] === 'hb') return;
+            if (msg[1] === 'hb'){
+                console.log(`Received HeatBeart in ${'????'} channel`);
+                return;
+            }
 
             // console.log('ws: new message: ', msg);
 
@@ -124,6 +149,21 @@ class BitfinexBot {
         // save state
 
     }
+
+    // Auth
+    _auth (calc = 0) {
+        const authNonce = (new Date()).getTime() * 1000;
+        const payload = 'AUTH' + authNonce + authNonce;
+        const signature = crypto.createHmac('sha384', this.apiSecret).update(payload).digest('hex');
+        this.wss.send({
+          event: 'auth',
+          apiKey: this.apiKey,
+          authSig: signature,
+          authPayload: payload,
+          authNonce: +authNonce + 1,
+          calc
+        });
+      }
 
     // WEBSOCKET PUBLIC CHANNELS
     _subscribeToBook(symbol){
