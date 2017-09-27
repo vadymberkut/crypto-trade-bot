@@ -1,5 +1,4 @@
 const _ = require('lodash');
-// const async = require('async');
 const fs = require('fs');
 const path = require('path');
 const moment = require('moment');
@@ -9,6 +8,10 @@ const logfile = path.join(__dirname, '../../logs/bitfinex/bookStore/ws-book-err.
 
 module.exports = class BookStore {
     constructor(){
+        this.clear();
+    }
+
+    clear(){
         this.BOOK = {};
     }
 
@@ -64,8 +67,8 @@ module.exports = class BookStore {
                 }
               }
               if (!found) {
-                let logMsg = "[" + moment().format() + "] " + pair + " | " + JSON.stringify(pp) + " BOOK delete fail side not found\n";
-                fs.appendFileSync(logfile, logMsg);
+                let logMsg = "[" + moment().format() + "] " + symbol + " | " + JSON.stringify(pp) + " BOOK delete fail side not found";
+                fs.appendFileSync(logfile, logMsg + '\n');
                 console.warn(logMsg);
               }
             } 
@@ -112,7 +115,7 @@ module.exports = class BookStore {
     saveBookSync() {
         if(!this.BOOK)
             return;
-        console.log('bookStore: save sync ');
+        // console.log('bookStore: save sync ');
         const now = moment.utc().format('YYYYMMDDHHmmss');
         const savefile = path.join(__dirname, '../../logs/bitfinex/bookStore/' + 'tmp-ws-book-' + now + '.log');
         fs.writeFileSync(savefile, JSON.stringify(this.BOOK));
@@ -121,7 +124,7 @@ module.exports = class BookStore {
     saveBook() {
         if(!this.BOOK)
             return;
-        console.log('bookStore: save async');
+        // console.log('bookStore: save async');
         const now = moment.utc().format('YYYYMMDDHHmmss');
         const savefile = path.join(__dirname, '../../logs/bitfinex/bookStore/' + 'tmp-ws-book-' + now + '.log');
         fs.writeFile(savefile, JSON.stringify(this.BOOK));
@@ -141,7 +144,7 @@ module.exports = class BookStore {
             }
             return false;
         });
-        return symbol;
+        return symbol || null;
     }
 
     // tIOTUSD, IOT -> sell
@@ -175,6 +178,12 @@ module.exports = class BookStore {
         return bestBookValue;
     }
 
+    getBestBookPriceForAction(symbol, action){
+        let bestBookValue = this.getBestBookValueForAction(symbol, action);
+        if(bestBookValue === null) return null;
+        return bestBookValue.PRICE;
+    }
+
     tryConvertToUsdUsingBestPrice(assetName, amount){
         if(assetName == 'USD')
             return amount;
@@ -206,5 +215,13 @@ module.exports = class BookStore {
             return assetAmount;
         }
         return null;
+    }
+
+    // check that book has data for all passed symbols
+    hasSymbols(symbols){
+        let stored = this.getStoredSymbols();
+        let matching = stored.filter(s => symbols.indexOf(s) !== -1);
+        let hasAll = matching.length === symbols.length;
+        return hasAll;
     }
 }

@@ -1,0 +1,31 @@
+
+Phase 1:
+   ✔ wss @done (17-09-25 18:27)
+   ✔ bookStore @done (17-09-25 18:27)
+   ✔ algorithm core @done (17-09-25 18:27)
+   ✔ tests @done (17-09-25 18:27)
+
+Phase 2:
+  ✔ store wallet info as book info (to determine accurate amount) @done (17-09-26 21:23)
+  ☐ CHECK min order amount for all pairs (in alg and chain)
+  ☐ ON STOP - wait path finished
+  ☐ handle WS close
+  ☐ catch errors
+  ☐ log somewhere
+  ☐ test on bitfinex real
+  ☐ check Platform Status and cancel orders
+  ☐ check balance
+  ☐ rollback if filed processing path
+  ☐ deploy to heroku
+
+take 5 IOT for tests
+
+Simulation
+
+Before fix for minStateTotalInUsd
+with fee 0.02% and reducing by 20%  - +102$
+without fee - +2036$
+with fee and without reducing by 20% - +105.87$
+
+After fix
+with fee 0.02% and reducing by 20% - 
