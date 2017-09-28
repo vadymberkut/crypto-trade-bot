@@ -1,7 +1,7 @@
 let {ValidationSchema, ValidationTypes, registerSchema, validate, validateSync} = require('class-validator');
 
 // define validation schema
-const schemaName = 'TradeReponseModel';
+const schemaName = 'TradeResponseModel';
 let validationSchema = {
     name: schemaName, // this is required, and must be unique
     properties: {
@@ -37,7 +37,7 @@ let validationSchema = {
 // register schema
 registerSchema(validationSchema);
 
-module.exports = class TradeReponseModel {
+module.exports = class TradeResponseModel {
     constructor(apiResponseData){
         this.origin = apiResponseData;
         this.updatedOnMs = (new Date()).getTime();

@@ -8,6 +8,12 @@ Phase 1:
 Phase 2:
   ✔ store wallet info as book info (to determine accurate amount) @done (17-09-26 21:23)
   ☐ CHECK min order amount for all pairs (in alg and chain)
+  ☐ TELEGRAM
+    ☐ telegram api models
+    ☐ getUpdates
+    ☐ store users
+    ☐ store channels
+  ☐ Handle order erros in chain - if first - cancel chain, else - rerty n times then notify in telegram
   ☐ ON STOP - wait path finished
   ☐ handle WS close
   ☐ catch errors
@@ -38,3 +44,9 @@ with fee 0.02% and reducing by 20% - 100.01$
 0.5% book - 5999$
 0.25% book - 4585$
 0.25% book and +-0.05% price change - 3786$
+0.25% book and +-0.05% price change and min 1$ est profit - 
+
+TELEGRAM BOT:
+  name: VBCryptoTradeBot
+  username: cryptotradevbot
+  HTTP API token: 455874865:AAEZC8f0kuXTmmmn_dS-9POITX9n_IVwpGo

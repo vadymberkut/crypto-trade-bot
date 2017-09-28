@@ -3,10 +3,13 @@ const _ = require('lodash');
 const app = express();
 const port = 3000;
 
+// load config
+require('dotenv').config({path: './development.env'});
+
 const BitfinexBot = require('./bitfinex/bitfinexBot.js');
 const bitfinexBot = new BitfinexBot({
-    apiKey: 'WFb6GxahaWcpfhjFWZJaF5LYb3lcP1ZnyHVPojcmzx9',
-    apiSecret: '7n8Awvh3Tpw7ORfCcVi2rM7NTrJwygk3B4c1yn2lVGe',
+    apiKey: process.env.BITFINEX_API_KEY,
+    apiSecret: process.env.BITFINEX_API_SECRET,
     currency: 'IOT',
     maxAmount: 1000,
     minPathLength: 3,
@@ -45,7 +48,7 @@ bitfinexBot.start();
 // handle process stop
 process.on('exit', processExitHandler.bind(null, {cleanup: true}));
 // ctrl-c
-process.on('SIGINT', processExitHandler.bind(null, {cleanup: true, exit:true})); 
+process.on('SIGINT', processExitHandler.bind(null, {cleanup: false, exit:true})); 
 // catches "kill pid" (for example: nodemon restart)
 process.on('SIGUSR1', processExitHandler.bind(null, {cleanup: true, exit:true}));
 process.on('SIGUSR2', processExitHandler.bind(null, {cleanup: true, exit:true}));

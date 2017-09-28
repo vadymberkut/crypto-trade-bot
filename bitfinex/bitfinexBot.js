@@ -17,11 +17,19 @@ const BitfinexOrderChain = require('./bitfinexOrderChain.js');
 
 let BookResponseModel = require('./apiModels/BookResponseModel.js');
 let WalletsResponseModel = require('./apiModels/WalletsResponseModel.js');
-let TradeReponseModel = require('./apiModels/TradeReponseModel.js');
+let OrderResponseModel = require('./apiModels/OrderResponseModel.js');
+let TradeResponseModel = require('./apiModels/TradeResponseModel.js');
+let NotificationResponseModel = require('./apiModels/NotificationResponseModel.js');
 
 const BookStore = require('./stores/bookStore.js');
 const WalletStore = require('./stores/walletStore.js');
+const OrderStore = require('./stores/orderStore.js');
+const NotificationStore = require('./stores/notificationStore.js');
 const CirclePathAlgorithm = require('./circlePathAlgorithm.js');
+
+const random = require('../utils/random.js');
+
+const TelegramBot = require('../telegram/telegramBot.js');
 
 const API_VERSION = 2;
 
@@ -83,7 +91,17 @@ function getMinOrderSize(currency){
     return bitfinexMinOrderSize['OTHER'];
 }
 
+const CLIENT_ORDER_ID_DATE_FORMAT = 'YYYY-MM-DD';
+
 const BITFINEX_MAX_CALCULATIONS_PER_BATCH = 30;
+
+const bitfinexOrderStatuses = {
+    ACTIVE: 'ACTIVE',
+    EXECUTED: 'EXECUTED',
+    PARTIALLY: 'PARTIALLY',
+    FILLED: 'FILLED',
+    CANCELED: 'CANCELED'
+};
 
 class BitfinexBot {
     constructor(options){
@@ -123,18 +141,32 @@ class BitfinexBot {
         // stores
         this.bookStore = new BookStore();
         this.walletStore = new WalletStore();
+        this.orderStore = new OrderStore();
+        this.notificationStore = new NotificationStore();
+        this.telegramBot = new TelegramBot({httpApiToken: process.env.TELEGRAM_HTTP_API_TOKEN});
         this.saveBookInterval = setInterval(() => {
             this.bookStore.saveBook();
         // }, 60000);
         // }, 5000);
         }, 30000);
 
+        this.telegramBot.getMe().then((user)=>{
+            console.info(user);
+        });
+        this.telegramBot.sendMessage({
+            chat_id: '375693371',
+            text: 'Hi from bot',
+
+        }).then((res)=>{
+            console.info(res);
+        });
+
         this.trading = false;
         this.lastTradingMs = (new Date()).getTime();
         this.minTradingIntervalMs = 500;
         this.maxSolveTimeMs = 850; // if greater - do nothing
 
-       this.bitfinexOrderChain = new BitfinexOrderChain(this.bookStore, this.walletStore);
+       this.bitfinexOrderChain = new BitfinexOrderChain(this.bookStore, this.walletStore, this.orderStore, this.telegramBot);
 
        this.solutionStats = {
            allProfits: [],
@@ -160,7 +192,7 @@ class BitfinexBot {
 
         this.wss.onopen = () => {
             // API keys setup here (See "Authenticated Channels")
-            console.log('WS open');
+            console.log('wss open');
             this.connecting = false;
             this.connected = true;
             this._auth();
@@ -168,7 +200,7 @@ class BitfinexBot {
         };
 
         this.wss.onclose = () => {
-            console.log('WS close');
+            console.log('wss close');
             this.connecting = false;
             this.connected = false;
             this.isAuthenticated = false;
@@ -177,7 +209,7 @@ class BitfinexBot {
         };
 
         this.wss.onerror = (err) => {
-            console.log('WS error: ', err);
+            console.erorr('wss error: ', err);
         };
 
         this.wss.onmessage = (response) => {
@@ -190,8 +222,6 @@ class BitfinexBot {
                 console.trace();
                 return;
             }
-            // console.log('ws: new message: ', message);
-            // console.log(`ws: new message: `, JSON.stringify(message));
             
             if (!Array.isArray(message) && message.event){
                 if(message.event == 'info'){
@@ -248,13 +278,11 @@ class BitfinexBot {
                         this.authInfo = message;
 
                         
-                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_MARKET, 'tIOTUSD', -0.12);
-                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_MARKET, 'tIOTUSD', -0.13);
-                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_MARKET, 'tIOTUSD', -0.14);
-                        // // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_MARKET, 'tIOTUSD', -5);
-                        // setInterval(()=>{
-                        //     this.bitfinexOrderChain.process(); 
-                        // }, 50);
+                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.28, 0.12);
+                        // this.bitfinexOrderChain.process(() => {
+                        //     console.log('orders processed');
+                        //     this.bitfinexOrderChain.clear();
+                        // });
                     }
                     else{
                         console.error(`auth error`, message);
@@ -275,18 +303,41 @@ class BitfinexBot {
                     // console.log(`Received HeatBeart in ${chanId} channel`);
                     return;
                 }
+                // From Bitfinex Docs:
+                // Work In Progress
+                // This section (Notifications) is currently a work in progress, but it will be a way to be alerted as to different changes in status, price alerts, etc
                 if (msgType == 'n'){
-                    console.log(`nnotification: ${chanId}: `, JSON.stringify(message));
+                    console.log(`notification: ${chanId}: `, JSON.stringify(message));
+                    let data = message[2];
+                    let model = new NotificationResponseModel(data);
+                    this.notificationStore.update(model);
+                    // new order notification
+                    if(model.TYPE == 'on-req'){
+                        let orderModel = new OrderResponseModel(model.NOTIFY_INFO);
+                        this.bitfinexOrderChain.newOrderError(model, orderModel);
+                    }
+                    // order cancel notification
+                    if(model.TYPE == 'oc-req'){
+                    }
+                    if(model.TYPE == 'uca'){
+                        
+                    }
+                    if(model.TYPE == 'fon-req'){
+                        
+                    }
+                    if(model.TYPE == 'foc-req'){
+                        
+                    }
                     return;
                 }
 
-                // listne to user info channels
+                // listen to user info channels
                 if(chanId === 0){
                     console.log(`ws: new message in ${chanId} channel: `, message);
-                
+                    let data = message[2];
+                    
                     // wallet snapshot or update
                     if(msgType == 'ws' || msgType == 'wu'){
-                        let data = message[2];
                         if(Array.isArray(data) && Array.isArray(data[0])){
                             let models = data.map((d) => new WalletsResponseModel(d));
                             this.walletStore.update(models);
@@ -305,14 +356,26 @@ class BitfinexBot {
                                 this._calcWalletBalance(model.WALLET_TYPE, model.CURRENCY);
                             }
                         }
-                        let balance = this.walletStore.getWalletBalance(bitfinexWalletTypes.EXCHANGE, 'USD');
-                        let balance2 = this.walletStore.getAvailableWalletBalance(bitfinexWalletTypes.EXCHANGE, 'USD');
                         return;
                     }
-                    if(msgType == 'te'){
-                        // calc available balance
+                    // handle orders messages
+                    if(msgType == 'os' || msgType == 'on' || msgType == 'ou' || msgType == 'oc' || msgType == 'oc-req'){
+                        if(Array.isArray(data) && Array.isArray(data[0])){
+                            let models = data.map((d) => new OrderResponseModel(d));
+                            this.orderStore.update(models);
+                        }
+                        else if(Array.isArray(data) && !Array.isArray(data[0])){
+                            let model = new OrderResponseModel(data);
+                            this.orderStore.update(model);
+                        }
+                        this.bitfinexOrderChain.newMessage(message);
+                        return;
                     }
-                    this.bitfinexOrderChain.newMessage(message);
+                    // handle trades messages
+                    if(msgType == 'te' || msgType == 'tu'){
+                        this.bitfinexOrderChain.newMessage(message);
+                        return;
+                    }
                 }
                 else{
                     this.channelSubscribtion.handle(message);
@@ -320,16 +383,6 @@ class BitfinexBot {
             }
         };
     }
-
-    _disconnect(){
-        this.wss.close();
-    }
-
-    _reconnect(){
-        this._disconnect();
-        this._connect();
-    }
-
 
     start(){
         console.log('starting bitfinex bot...')
@@ -351,7 +404,6 @@ class BitfinexBot {
     stop(){
         console.log('stopping bitfinex bot...')
         this._unsubscribeFromAll();
-        this._disconnect();
     }
 
     // Auth
@@ -374,11 +426,14 @@ class BitfinexBot {
                 'trading', //orders, positions, trades 
                 // 'funding', //offers, credits, loans, funding trades
                 'wallet', //wallet 
-                // 'algo', //algorithmic orders
+                'algo', //algorithmic orders
                 'balance' //balance (tradable balance, ...)
               ]
         };
-        this.wss.send(JSON.stringify(request));
+        this.wss.send(JSON.stringify(request), (err) => {
+            if(err)
+                console.error(`wss: auth error `, err);
+        });
     }
 
     _subscribeToBook(symbol){
@@ -398,7 +453,10 @@ class BitfinexBot {
         this.channelSubscribtion.add(request, (symbol, model) => {
             this.bookStore.update(symbol, model);
         });
-        this.wss.send(JSON.stringify(request));
+        this.wss.send(JSON.stringify(request), (err) => {
+            if(err)
+                console.error(`wss: ${symbol} book subscribe error `, err);
+        });
     }
 
     _subscribeToAllBooks(){
@@ -414,7 +472,10 @@ class BitfinexBot {
                 event: 'unsubscribe',
                 chanId: id.toString()
             };
-            this.wss.send(JSON.stringify(request));
+            this.wss.send(JSON.stringify(request), (err) => {
+                if(err)
+                    console.error(`wss: channel ${id} unsubscribe error `, err);
+            });
         });
     }
 
@@ -490,7 +551,6 @@ class BitfinexBot {
         
         hrstart = process.hrtime();
         let solution = solutions[0]; // take best solution
-        // console.info('processing best solution path, solution: ', solution);
 
         // save stats
         let estProfit = solution.estimatedProfit;
@@ -509,10 +569,7 @@ class BitfinexBot {
         // console.log('TOTAL:');
         // console.log(`${'IOT'}: min=${this.solutionStats.min}, max=${this.solutionStats.max}, avg=${ this.solutionStats.avg}, sum=${this.solutionStats.sum}`);
         // console.log(`USD: min=${this.solutionStats.minUsd}, max=${this.solutionStats.maxUsd}, avg=${this.solutionStats.avgUsd}, sum=${this.solutionStats.sumUsd}`);
-        
-        let date = moment.utc().format('YYYYMMDDHHmmss');
-        const fileName = path.join(__dirname, '../logs/bitfinex/bot/', `${this.currency}-${date}-test-logs.log`);
-        fs.writeFileSync(fileName, JSON.stringify(this.solutionStats));
+
 
         // TODO
         // HERE WE need to ensure that when WS connection is lost and reestablished
@@ -542,66 +599,94 @@ class BitfinexBot {
         }, true);
         if(allMoreThanMinSize === false){
             console.warn(`skip solution: transition has amount less that min order amount`);
+            this.trading = false;
+            return
         }
 
-        // this.trading = false;
-        // return;
+        this.trading = false;
+        return;
 
         instructions.forEach((ins) => {
             this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, ins.transition, ins.actionPrice, ins.actionAmount);
         });
-        let interval = setInterval(() => {
-            let processed = this.bitfinexOrderChain.process();
-            if(processed){
-                clearInterval(interval);
-                this.trading = false;
-                this.lastTradingMs = (new Date()).getTime();
-                // clear chain
-                this.bitfinexOrderChain.clear();
-            }
-        }, 20);
+        this.bitfinexOrderChain.process(() => {
+            this.trading = false;
+            this.lastTradingMs = (new Date()).getTime();
+            this.bitfinexOrderChain.clear();
+        });
         hrend = process.hrtime(hrstart);
         executionMs = hrend[1]/1000000;
     }
 
-    _addNewOrderRequestToChain(type, symbol, price, amount = null){
+    _addNewOrderRequestToChain(type, symbol, price, amount){
         let gid = 1;
-        // let cid = (new Date()).getTime() * 1000; // IF I WILL USE IT - ENSURE THAT IS IS UNIQ (can be gereted in 1 ms twice or more)
+
+        const MAX_CID = Math.pow(2, 45) - 1; // int45 - 2^45 - 1
+        const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER; // 2^53 - 1
+        const MAX_VALUE = Number.MAX_VALUE; // 1.79E+308 = 1.79*10^308
+        let cid = random.randomIntInc(1, MAX_CID) ; // i have tested on 500000 generations - no duplicates
+
         let request = [
             0,
             'on',
             null,
             {
-                "gid": gid, // (optional) Group id for the order
-                // "cid": cid, // Must be unique in the day (UTC)
-                "type": type,
-                "symbol": symbol, // symbol (tBTCUSD, tETHUSD, ...)
-                "amount": amount === null ? null : amount.toString(), // Positive for buy, Negative for sell
+                "gid": gid, // int32 (optional) Group id for the order
+                "cid": cid, // int45 Must be unique in the day (UTC)
+                "type": type.toString(),
+                "symbol": symbol.toString(), // symbol (tBTCUSD, tETHUSD, ...)
+                "amount": amount.toString(), // decimal string, Positive for buy, Negative for sell
                 "price": price.toString(), // Price (Not required for market orders)
                 // "price_trailing":  // The trailing price
                 // "price_aux_limit": , // Auxiliary Limit price (for STOP LIMIT)
-                "hidden": 1, // 1 or 0
-                // "postonly": // (optional) Whether the order is postonly (1) or not (0)
+                "hidden": 1, // int2 1 or 0
+                // "postonly": // int2 (optional) Whether the order is postonly (1) or not (0)
             }
         ];
 
         this.bitfinexOrderChain.enqueue(request, (requestObj) => {
-            this.wss.send(JSON.stringify(requestObj));
+            this.wss.send(JSON.stringify(requestObj), (err) => {
+                if(err){
+                    console.error(`wss: new order error `, err);
+                }
+            });
+        }, (id) => {
+            // cancel callback
+            this._cancelOrderById(id);
         });
     }
 
-    _cancelOrder(orderId){
+    _cancelOrderById(orderId){
         let request = [
             0,
             'oc',
             null,
             {
-                id: orderId,
-                // cid: , // Client Order ID
-                // cid_date: // Client Order ID Date
+                id: orderId
             }
         ];
-        this.wss.send(JSON.stringify(request));
+        this.wss.send(JSON.stringify(request), (err) => {
+            if(err)
+                console.error(`wss: cancel order ${orderId} error `, err);
+        });
+    }
+
+    // The Client Order ID is unique per day, so you also have to provide the date of the order as a date string in this format YYYY-MM-DD.
+    _cancelOrderByClientOrderId(clientOrderId, clientOrderIdDateTimestamp){
+        let clientOrderIdDate = moment(clientOrderIdDateTimestamp).format(CLIENT_ORDER_ID_DATE_FORMAT);
+        let request = [
+            0,
+            'oc',
+            null,
+            {
+                cid: clientOrderId, // Client Order ID
+                cid_date: clientOrderIdDate.toString() // Client Order ID Date
+            }
+        ];
+        this.wss.send(JSON.stringify(request), (err) => {
+            if(err)
+                console.error(`wss: cancel client order ${clientOrderId} ${clientOrderIdDate} error `, err);
+        });
     }
 
     _calcWalletBalance(walletType, currency){
@@ -612,11 +697,12 @@ class BitfinexBot {
             'calc',
             null,
             [
-                // ['wallet_exchange_USD'],
-                // ['wallet_exchange_IOT'],
                 [`wallet_${walletType}_${currency}`],
             ]
-        ]));
+        ]), (err) => {
+            if(err)
+                console.error(`wss: calc error `, err);
+        });
     }
 
     // options = [{walletType: string, currency: string}]
@@ -632,7 +718,10 @@ class BitfinexBot {
                 null,
                 requestData
             ];
-            this.wss.send(JSON.stringify(request));
+            this.wss.send(JSON.stringify(request), (err) => {
+                if(err)
+                    console.error(`wss: calc wallet balance error `, err);
+            });
         });
     }
 }
