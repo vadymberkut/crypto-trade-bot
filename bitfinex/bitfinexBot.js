@@ -72,7 +72,7 @@ const bitfinexOrderExecutionFees = {
 };
 
 const bitfinexMinOrderSize = {
-    'BTC': 0.01,
+    'BTC': 0.05, //0.01,
     'ZEC': 0.01,
     'OTHER': 0.1,
 };
@@ -341,11 +341,11 @@ class BitfinexBot {
             this._connect();
         }, 2500)
 
-        setTimeout(()=>{
-            let tradeInterval = setInterval(() => {
-                this._startTrading();
-            }, this.minTradingIntervalMs);
-        }, 5000);
+        // setTimeout(()=>{
+        //     let tradeInterval = setInterval(() => {
+        //         this._startTrading();
+        //     }, this.minTradingIntervalMs);
+        // }, 5000);
     }
 
     stop(){
@@ -459,7 +459,7 @@ class BitfinexBot {
                 this.maxPathLength, 
                 this.minPathProfitUsd, 
                 bitfinexOrderExecutionFees.taker,
-                bitfinexHelper.convertSymbolToCurrency
+                bitfinexHelper
             );
             solutions = circlePathAlgorithm.solve();
         }
@@ -485,7 +485,7 @@ class BitfinexBot {
         // let json = fs.readFileSync(fileName2, 'utf8');
         // let obj = JSON.parse(json);
         // bookStore.initBookFromObject(obj);
-        // circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT', 2000, 3, 5, 0.01, 0.002, bitfinexHelper.convertSymbolToCurrency);
+        // circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT', 2000, 3, 5, 0.01, 0.002, bitfinexHelper);
         // solutions = circlePathAlgorithm.solve();
         
         hrstart = process.hrtime();
@@ -514,24 +514,24 @@ class BitfinexBot {
         const fileName = path.join(__dirname, '../logs/bitfinex/bot/', `${this.currency}-${date}-test-logs.log`);
         fs.writeFileSync(fileName, JSON.stringify(this.solutionStats));
 
-        // this.trading = false;
-
         // TODO
         // HERE WE need to ensure that when WS connection is lost and reestablished
         // the order chain will continue processing
         let instructions = solution.instructions;
 
         // TEST
-        // instructions = [
-        //     {
-        //         transition: 'tIOTUSD',
-        //         actionAmount: -5.03
-        //     },
-        //     {
-        //         transition: 'tXRPUSD',
-        //         actionAmount: 13.3088
-        //     }
-        // ];
+        instructions = [
+            {
+                transition: 'tIOTUSD',
+                actionPrice: 0.53505,
+                actionAmount: -4.81,
+            },
+            {
+                transition: 'tIOTUSD',
+                actionPrice: 0.53265,
+                actionAmount: 4.81
+            }
+        ];
 
         // check min order size
         let allMoreThanMinSize = instructions.reduce((res, ins) => {
@@ -544,8 +544,11 @@ class BitfinexBot {
             console.warn(`skip solution: transition has amount less that min order amount`);
         }
 
+        // this.trading = false;
+        // return;
+
         instructions.forEach((ins) => {
-            this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_MARKET, ins.transition, ins.actionAmount);
+            this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, ins.transition, ins.actionPrice, ins.actionAmount);
         });
         let interval = setInterval(() => {
             let processed = this.bitfinexOrderChain.process();
@@ -561,7 +564,7 @@ class BitfinexBot {
         executionMs = hrend[1]/1000000;
     }
 
-    _addNewOrderRequestToChain(type, symbol, amount = null){
+    _addNewOrderRequestToChain(type, symbol, price, amount = null){
         let gid = 1;
         // let cid = (new Date()).getTime() * 1000; // IF I WILL USE IT - ENSURE THAT IS IS UNIQ (can be gereted in 1 ms twice or more)
         let request = [
@@ -574,7 +577,7 @@ class BitfinexBot {
                 "type": type,
                 "symbol": symbol, // symbol (tBTCUSD, tETHUSD, ...)
                 "amount": amount === null ? null : amount.toString(), // Positive for buy, Negative for sell
-                // "price": , // Price (Not required for market orders)
+                "price": price.toString(), // Price (Not required for market orders)
                 // "price_trailing":  // The trailing price
                 // "price_aux_limit": , // Auxiliary Limit price (for STOP LIMIT)
                 "hidden": 1, // 1 or 0

@@ -28,4 +28,13 @@ without fee - +2036$
 with fee and without reducing by 20% - +105.87$
 
 After fix
-with fee 0.02% and reducing by 20% - 
+with fee 0.02% and reducing by 20% - 100.01$
+
+1000 IOT -> x0.00180 ETH -> 1.8 ETH
+1.8 ETH -> x0.07375 BTC -> 0.13275 BTC
+0.13275 BTC -> x0.00013015 -> 1019.97 IOT
++ 19.97 IOT
+
+0.5% book - 5999$
+0.25% book - 4585$
+0.25% book and +-0.05% price change - 3786$

@@ -1,3 +1,4 @@
+const bitfinexHelper = require('./bitfinexHelper.js');
 
 // chain of orders - like queue
 // ensure that orders executed one by one
@@ -5,6 +6,7 @@ module.exports = class BitfinexOrderChain {
     constructor(bookStore, walletStore){
         this.bookStore = bookStore;
         this.walletStore = walletStore;
+        this.limitOrderCancelTimeout = null;
         this.clear();
     }
 
@@ -70,23 +72,20 @@ module.exports = class BitfinexOrderChain {
 
         let symbol = order.request[3].symbol;
         let amount = +order.request[3].amount;
-        let pair = order.request[3].symbol.substr(1, order.request[3].symbol.length);
-        let currencies = pair.match(/.{3}/g);
-        let baseCurrency = currencies[0];
-        let qouteCurrency = currencies[1];
+        let {pair, base, qoute} = bitfinexHelper.convertSymbolToCurrency(symbol);
         let action = amount > 0 ? 'buy' : 'sell';
         let amountSign = amount >= 0 ? 1 : -1;
         let availableBalance = null;
         let availableAmount = null;
         if(action == 'buy'){
-            availableBalance = this.walletStore.getAvailableWalletBalance('exchange', qouteCurrency);
+            availableBalance = this.walletStore.getAvailableWalletBalance('exchange', qoute);
             if(availableBalance === null) return;
-            let bestActionPrice = this.bookStore.getBestBookPriceForAction(symbol, action);
+            let bestActionPrice = this.bookStore.getBestLimitBookPriceForAction(symbol, action);
             if(bestActionPrice === null) return;
             availableAmount = availableBalance / bestActionPrice;
         }
         if(action == 'sell'){
-            availableBalance = this.walletStore.getAvailableWalletBalance('exchange', baseCurrency);
+            availableBalance = this.walletStore.getAvailableWalletBalance('exchange', base);
             if(availableBalance === null) return;
             availableAmount = availableBalance;
         }
@@ -96,17 +95,15 @@ module.exports = class BitfinexOrderChain {
             console.log(`bitfinexOrderChain: reduce trade amount from ${order.request[3].amount} to ${availableAmount}`);
             amount = amountSign * availableAmount;
         }
-        let logMsg = `bitfinexOrderChain: placing order TYPE=${order.type} SYMBOL=${order.symbol} AMOUNT=${order.amount} (${order.attempts})`;
-        if(order.attempts === 0){
-            console.log(logMsg);
-        }
         if(order.attempts > 0){
             // descrease amount
             let decreasePercent = 0.001; // 0.1%
             amount = amount * (1 - decreasePercent);
-            console.log(logMsg);
         }
         order.request[3].amount = amount.toString();
+        let logMsg = `bitfinexOrderChain: placing order TYPE=${order.request[3].type} SYMBOL=${order.request[3].symbol} SYMBOL=${order.request[3].price} AMOUNT=${order.request[3].amount} (${order.attempts})`;
+        console.log(logMsg);
+        
         order.processing = true;
         order.sentOnMs = (new Date()).getTime();
         order.attempts += 1;

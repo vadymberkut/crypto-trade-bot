@@ -130,15 +130,38 @@ module.exports = class BookStore {
         fs.writeFile(savefile, JSON.stringify(this.BOOK));
     }
 
+
+
     getStoredSymbols(){
         return Object.keys(this.BOOK).filter((s) => !!s);
     }
 
-    getSymbol(assetName1, assetName2){
+    getStoredPairs(){
+        let symbols = this.getStoredSymbols();
+        let pairs = symbols.map(s => s.substr(1, s.length));
+        return pairs;
+    }
+
+    getStoredCurrencies(){
+        let symbols = this.getStoredSymbols();
+        const symbolLength = 3;
+        let currencies = symbols.map((s) => {
+            if(s.length !== 1 + 2*symbolLength)
+                return null;
+            return [s.substr(1, symbolLength), s.substr(1 + symbolLength, symbolLength)];
+        });
+        currencies = _.flatten(currencies); // merge to single array
+        currencies = currencies.filter((st) => st !== null); // filter null values
+        currencies = _.uniq(currencies); // take only uniq
+        return currencies;
+    }
+
+    // ETH, IOT -> tIOTETH
+    getSymbol(currency1, currency2){
         let symbols = this.getStoredSymbols();
         let symbol = symbols.find((s) => {
-            let regex1 = new RegExp(`t${assetName1}${assetName2}`);
-            let regex2 = new RegExp(`t${assetName2}${assetName1}`);
+            let regex1 = new RegExp(`t${currency1}${currency2}`);
+            let regex2 = new RegExp(`t${currency2}${currency1}`);
             if(regex1.test(s) || regex2.test(s)){
                 return true;
             }
@@ -149,9 +172,9 @@ module.exports = class BookStore {
 
     // tIOTUSD, IOT -> sell
     // tIOTUSD, USD -> buy
-    getSymbolAction(symbol, assetName){
-        let regex1 = new RegExp(`^t${assetName}[A-Z]{3}$`);
-        let regex2 = new RegExp(`^t\[A-Z]{3}${assetName}$`);
+    getSymbolAction(symbol, currency){
+        let regex1 = new RegExp(`^t${currency}[A-Z]{3}$`);
+        let regex2 = new RegExp(`^t\[A-Z]{3}${currency}$`);
         let action = null;
         
         if(regex1.test(symbol)){
@@ -165,7 +188,7 @@ module.exports = class BookStore {
 
     // symbol - tIOTUSD
     // action - buy | sell
-    getBestBookValueForAction(symbol, action){
+    getBestMarketBookValueForAction(symbol, action){
         let symbolBook = this.BOOK[symbol];
         if(!symbol || !symbolBook || !action || (action != 'buy' && action != 'sell')){
             return null;
@@ -178,10 +201,59 @@ module.exports = class BookStore {
         return bestBookValue;
     }
 
-    getBestBookPriceForAction(symbol, action){
+    // symbol - tIOTUSD
+    // action - buy | sell
+    getBestLimitBookValueForAction(symbol, action){
+        let symbolBook = this.BOOK[symbol];
+        if(!symbol || !symbolBook || !action || (action != 'buy' && action != 'sell')){
+            return null;
+        }
+        let side = action == 'buy' ? 'bids' : 'asks';
+
+        // take best ask or bid depending on action
+        let bestPrice = symbolBook.psnap[side][0];
+        let bestBookValue = symbolBook[side][bestPrice];
+        return bestBookValue;
+    }
+
+    getBestMarketBookPriceForAction(symbol, action){
         let bestBookValue = this.getBestBookValueForAction(symbol, action);
         if(bestBookValue === null) return null;
         return bestBookValue.PRICE;
+    }
+
+    getBestLimitBookPriceForAction(symbol, action){
+        let bestBookValue = this.getBestLimitBookValueForAction(symbol, action);
+        if(bestBookValue === null) return null;
+        return bestBookValue.PRICE;
+    }
+
+    // get first n book values
+    // returned values sorted by price (desc for bids, asc for asks)
+    getFirstBookValuesByCount(symbol, side, count = 10){
+        let prices = this.BOOK[symbol].psnap[side].slice(0, count);
+        let result = prices.map(p => this.BOOK[symbol][side][p]);
+        return result;
+    }
+
+    // get first book values by percent deviation from first price
+    // returned values sorted by price (desc for bids, asc for asks)
+    getFirstBookValuesByPercent(symbol, side, percent = 0.01){
+        let firstPrice = +this.BOOK[symbol].psnap[side][0];
+        let deviation = firstPrice * percent;
+        let sign = side == 'bids' ? -1 : +1;
+        let lastPrice = firstPrice + (sign * deviation);
+        let condition = (p) => side == 'bids' ? firstPrice >= p && p >= lastPrice : firstPrice <= p && p <= lastPrice;
+        let prices = this.BOOK[symbol].psnap[side].filter(p => condition(p));
+        let result = prices.map(p => this.BOOK[symbol][side][p]);
+        return result;
+    }
+
+    getSpread(symbol){
+        let bestBidPrice = +this.BOOK[symbol].psnap['bids'][0];
+        let bestAskPrice = +this.BOOK[symbol].psnap['asks'][0];
+        let spread = Math.abs(bestBidPrice - bestAskPrice);
+        return spread;
     }
 
     tryConvertToUsdUsingBestPrice(assetName, amount){
@@ -224,4 +296,5 @@ module.exports = class BookStore {
         let hasAll = matching.length === symbols.length;
         return hasAll;
     }
+
 }

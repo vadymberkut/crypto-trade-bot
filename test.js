@@ -25,10 +25,14 @@ let profitsUsd = [];
 
 let hrstart, hrend;
 
-let startFrom = 400;
+let startFrom = 1200;
+let processCount = 5000;
+let count = 0;
 logFiles = logFiles.slice(startFrom, logFiles.length - 1);
 logFiles.forEach((logFile, i) => {
     // console.log(`Processing file: ${logFile}`);
+    count += 1;
+    if(count >= processCount) return;
     let index = i + startFrom;
     try{
         hrstart = process.hrtime();
@@ -47,7 +51,7 @@ logFiles.forEach((logFile, i) => {
     
         let bookStore = new BookStore();
         bookStore.initBookFromObject(obj);
-        let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, startState, maxAmount, 3, 5, 0.01, 0.002, bitfinexHelper.convertSymbolToCurrency);
+        let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, startState, maxAmount, 3, 5, 1, 0.002, bitfinexHelper);
 
         let solutions = circlePathAlgorithm.solve();
 

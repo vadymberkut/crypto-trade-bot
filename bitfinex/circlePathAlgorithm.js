@@ -8,7 +8,7 @@ const MAX_PATH_LENGTH = 6;
 const MIN_PATH_PROFIT = 0.01;
 
 module.exports = class CirclePathAlgorithm {
-    constructor(bookStore, startState, maxStartStateAmount, minPathLength = 3, maxPathLength = 5, minPathProfitUsd = 0.50, transitionFee = 0.002, convertSymbolToCurrency){
+    constructor(bookStore, startState, maxStartStateAmount, minPathLength = 3, maxPathLength = 5, minPathProfitUsd = 0.50, transitionFee = 0.002, exchangeHelper){
         if(!bookStore){
             throw new Error(`CirclePathAlgorithm: bookStore can't be null or empty`);
         }
@@ -32,7 +32,7 @@ module.exports = class CirclePathAlgorithm {
         this.maxPathLength = maxPathLength;
         this.minPathProfitUsd = minPathProfitUsd;
         this.transitionFee = transitionFee;
-        this.convertSymbolToCurrency = convertSymbolToCurrency;
+        this.exchangeHelper = exchangeHelper;
         
         this.graphStates = null;
         this.graphStateTransitions = null;
@@ -43,27 +43,17 @@ module.exports = class CirclePathAlgorithm {
     }
 
     _buildGraph(){
-        let bookSymbols = this.bookStore.getStoredSymbols();
-
         // TODO - consider gettting states from available wallets
-        // get graph states (currencies names e.g. BTC, USD, IOT) from symbols e.g. tIOTUSD
-        const symbolLength = 3;
-        this.graphStates = bookSymbols.map((s) => {
-            if(s.length !== 1 + 2*symbolLength)
-                return null;
-            return [s.substr(1, symbolLength), s.substr(1 + symbolLength, symbolLength)];
-        });
-        this.graphStates = _.flatten(this.graphStates); // merge to single array
-        this.graphStates = this.graphStates.filter((st) => !!st); // filter null values
-        this.graphStates = _.uniq(this.graphStates); // take only uniq
+        this.graphStates = this.bookStore.getStoredCurrencies();
 
         // get state transitions (currency pair names) e.g. {symbol: tIOTUSD, state1: IOT, state2: USD, bidirectional: true}
-        this.graphStateTransitions = bookSymbols.map((s) => {
+        let bookPairs = this.bookStore.getStoredPairs();
+        this.graphStateTransitions = bookPairs.map((p) => {
+            let {base, qoute} = this.exchangeHelper.convertPairToCurrency(p);
             return {
-                symbol: s,
-                state1: s.substr(1, symbolLength),
-                state2: s.substr(1 + symbolLength, symbolLength),
-                bidirectional: true
+                symbol: this.exchangeHelper.convertPairToSymbol(p),
+                state1: base,
+                state2: qoute
             };
         });
     }
@@ -79,7 +69,7 @@ module.exports = class CirclePathAlgorithm {
         return result;
     }
 
-    // for list of transitions find states that we can gor from specisifed state
+    // for list of transitions find states that we can go from specisifed state
     _getTransitionsStatesForState(transitions, fromState){
         let result = transitions.map((t) => {
             if(t.state1 != fromState)
@@ -108,29 +98,24 @@ module.exports = class CirclePathAlgorithm {
         let processedSolution = processedSolutions[0];
 
         // filter circular pathes. e.g. IOT -> USD -> IOT -> USD -> IOT
-        // i.e. where start state occurs more than twice (should oonly at start and end)
+        // i.e. where start state occurs more than twice (should apear only at start and end)
         processedSolution = processedSolution.filter((ps) => {
-            return ps.path.filter(p => p == this.startState).length == 2;
+            return ps.path.filter(p => p == this.startState).length === 2;
         });
 
-        // TODO OR NOT - filter pathes with duplicate states. e.g. ... -> BCH -> USD -> BCH -> ...
+        // ALLOW pathes with duplicate states. e.g. ... -> BCH -> USD -> BCH -> ...; ... USD -> ETH -> IOT -> USD -> ...
 
-        //determine profit pathes taking into account token max amount or suggest pathes with specified amount
-        let profitSolutions = processedSolution.filter((i) => i.estimatedProfit >= 0 && i.estimatedProfitUsd >= this.minPathProfitUsd);
+        //determine profit pathes
+        let profitSolutions = processedSolution.filter((i) => i.estimatedProfit > 0 && i.estimatedProfitUsd >= this.minPathProfitUsd);
         profitSolutions = _.orderBy(profitSolutions, i => i.estimatedProfit, 'desc'); //order by profit DESC
-        // let profitSolutionsProfit = profitSolutions.map((i) => i.estimatedProfit);
-        // let profitSolutionsProfitUsd = profitSolutions.map((i) => i.estimatedProfitUsd);
-        // let usedPassAmounts = profitSolutions.map((i) => i.usedPassAmount);
-        // let minProfit = _.min(profitSolutionsProfit);
-        // let maxProfit = _.max(profitSolutionsProfit);
-        // let avgProfit = _.sum(profitSolutionsProfit) / profitSolutionsProfit.length;
 
         this.solutions = profitSolutions;
         return profitSolutions;
     }
 
     _findPath(graphStates, pathLength = -1){
-        // pathLength is measured in amount of transitions performed
+        // pathLength is measured in amount of transitions performed between states
+        // e.g. IOT -> USD -> ETH -> IOT path has 3 transiotions
         // if graphStates.length === 1 it's start point
         
         pathLength += 1;
@@ -142,7 +127,6 @@ module.exports = class CirclePathAlgorithm {
                 if(gs == this.startState){
                     // console.log(`found min length circle path (${this.startState} -> ${gs}); pathLength=`, pathLength);
                     // min length circle path reached
-                    // so this state can be final or can be proccessed futher
                     isCirclePathEnd = true;
                     return {
                         state: gs,
@@ -222,10 +206,8 @@ module.exports = class CirclePathAlgorithm {
             }
             else{
                 let nextResults = this._buildSolution(r.nextStates);
-                // nextResults = _.flattenDeep(nextResults);
                 nextResults = _.flatten(nextResults);
                 nextResults = nextResults.map((nr) => {
-                    // return `${r.state} -> ${nr}`;
                     if(Array.isArray(nr)){
                         nr.unshift(r.state);
                         return nr;
@@ -243,8 +225,8 @@ module.exports = class CirclePathAlgorithm {
     _processSolution(solution){
         if(solution === null)
             return null;
-        let result = solution.map((s) => {
-            return s.map((path) => {
+        let result = solution.map((sol) => {
+            let solResults = sol.map((path) => {
                 let stateInstructions = path.map((state, i) => {
                     let nextState = null;
                     if(i !== path.length - 1)
@@ -261,17 +243,21 @@ module.exports = class CirclePathAlgorithm {
     
                     // determine action: buy/sell
                     let action = null;
+                    let side = null;
                     if(i !== path.length - 1){
                         action = this.bookStore.getSymbolAction(transition, state);
                         if(action === null){
                             throw new Error(`CirclePathAlgorithm: can't find action (buy/sell) for ${state} using transition ${transition}`);
                         }
+                        // side = action == 'buy' ? 'bids' : 'asks';
                     }
-    
-                    // determine best book value we can buy/sell by market using bookStore
+
+                    // OLD: determine best book value we can buy/sell by market
+                    // determine best book value we can buy/sell by limit order
                     let bestBookValue = null;
                     if(i !== path.length - 1){
-                        bestBookValue = this.bookStore.getBestBookValueForAction(transition, action);
+                        // bestBookValue = this.bookStore.getBestMarketBookValueForAction(transition, action); 
+                        bestBookValue = this.bookStore.getBestLimitBookValueForAction(transition, action);
                         if(bestBookValue === null){
                             throw new Error(`CirclePathAlgorithm: can't find bestBookValue for ${action} ${transition}`);
                         }
@@ -289,6 +275,8 @@ module.exports = class CirclePathAlgorithm {
                 });
 
                 // determine max amount of start state (asset) to accomplish path in best prices
+                // limit orders will be placed.
+                // if buy -> bids. if sell -> asks
                 let stateTotalsInUsd = [];
                 stateInstructions.forEach((si, i) => {
                     let {isStart, isEnd, action, bestBookValue, nextState, state, transition} = si;
@@ -300,10 +288,8 @@ module.exports = class CirclePathAlgorithm {
                     let {AMOUNT, COUNT, PRICE, type} = bestBookValue;
 
                     // save cost of the transition in usd
-                    // let amount = nextState == 'USD' ? AMOUNT * PRICE : AMOUNT;
-                    // let nextStateInUsd = this.bookStore.tryConvertToUsdUsingBestPrice(nextState, amount);
                     let nextStateInUsd = null;
-                    let {pair, base, qoute} = this.convertSymbolToCurrency(transition);
+                    let {pair, base, qoute} = this.exchangeHelper.convertSymbolToCurrency(transition);
                     if(action == 'buy'){
                         let totalInQoute = AMOUNT * PRICE;
                         nextStateInUsd = this.bookStore.tryConvertToUsdUsingBestPrice(qoute, totalInQoute);
@@ -322,7 +308,6 @@ module.exports = class CirclePathAlgorithm {
                     throw new Error(`CirclePathAlgorithm: can't convert USD to ${this.startState}`);
                 }
 
-                // TODO - THIS PART ISN'T COMPLETED
                 // simulate path and estimate profit
                 let estimatedProfit = 0; // it start state
                 let estimatedProfitUsd = 0; // it USD
@@ -330,7 +315,6 @@ module.exports = class CirclePathAlgorithm {
                 // let realPassAmount = minStateAmount * 0.8;
                 let realPassAmount = minStateAmount;
                 let usedPassAmount = Math.min(desiredPassAmount, realPassAmount);
-                // let bestBookValues = stateInstructions.map(si => si.bestBookValue);
 
                 let obtainedAmount = stateInstructions.reduce((prevInstrTotal, si, i) => {
                     let {isStart, isEnd, action, bestBookValue, nextState, state, transition} = si;
@@ -343,6 +327,12 @@ module.exports = class CirclePathAlgorithm {
                     let {AMOUNT, COUNT, PRICE, type} = bestBookValue;
                     let total = AMOUNT * PRICE;
 
+                    // reduce(increase) price to place the first order in book
+                    const PRICE_INCREASE_DECREASE_PERCENT = this.transitionFee * 0.25;
+                    let spread = this.bookStore.getSpread(transition);
+                    // let spreadPortion = spread * 0.25;
+                    let actionPrice = action == 'buy' ? PRICE * (1 + PRICE_INCREASE_DECREASE_PERCENT) : PRICE * (1 - PRICE_INCREASE_DECREASE_PERCENT);
+
                     // simulate action
                     let resultTotal = 0;
                     let actionAmount = null;
@@ -350,24 +340,50 @@ module.exports = class CirclePathAlgorithm {
                         prevInstrTotal = usedPassAmount;
                     }
                     if(action == 'buy'){
-                        resultTotal = prevInstrTotal / PRICE;
+                        resultTotal = prevInstrTotal / actionPrice;
                         resultTotal = resultTotal * (1 - this.transitionFee); // take into account transition fee
                         actionAmount = resultTotal;
                         // actionAmount = actionAmount * (1 - 0.0001); // - delta 0.01%
                     }
                     else if(action == 'sell'){
-                        resultTotal = prevInstrTotal * PRICE;
+                        resultTotal = prevInstrTotal * actionPrice;
                         resultTotal = resultTotal * (1 - this.transitionFee); // take into account transition fee
                         actionAmount = - prevInstrTotal;
                         // actionAmount = actionAmount * (1 - 0.0001); // - delta 0.01%
                     }
-                    si.actionAmount = actionAmount; // save
+                    si.actionAmount = actionAmount;
+                    si.actionPrice = actionPrice;
                     return resultTotal;
                 }, 0);
                 estimatedProfit = (obtainedAmount - usedPassAmount); // amount of start state
                 estimatedProfitUsd = this.bookStore.tryConvertToUsdUsingBestPrice(this.startState, estimatedProfit);
                 if(estimatedProfitUsd === null){
                     throw new Error(`CirclePathAlgorithm: can't convert ${this.startState} to USD`);
+                }
+
+                let allSatisfiesCondition = stateInstructions.reduce((allSatisfiesConditionResult, si, i) => {
+                    let {isStart, isEnd, action, bestBookValue, nextState, state, transition, actionAmount} = si;
+                    
+                    if(isEnd){
+                        // reached the end - do nothing
+                        return allSatisfiesConditionResult && true;
+                    } 
+
+                    // NEW: analize order book
+                    // if sell - check bids have enought volume, if buy - check asks
+                    let side = action == 'buy' ? 'asks' : 'bids'; // look at opposite side
+                    const FIRST_BOOK_VALUES_TAKE_PERCENT = 0.0025; // 0.25%
+                    const firstBookValuesMinTotalAmount = Math.abs(actionAmount) * 3;
+                    let firstBookValues = this.bookStore.getFirstBookValuesByPercent(transition, side, FIRST_BOOK_VALUES_TAKE_PERCENT);
+                    let firstBookValuesTotalAmount = firstBookValues.reduce((total, bv) => {
+                        return total + bv.AMOUNT;
+                    }, 0);
+
+                    let satisfiesCondition = firstBookValuesTotalAmount >= firstBookValuesMinTotalAmount;
+                    return allSatisfiesConditionResult && satisfiesCondition;
+                }, true);
+                if(allSatisfiesCondition === false){
+                    return 'TOO_THIN_OPPOSITE_ORDER_BOOK';
                 }
 
                 return {
@@ -382,6 +398,14 @@ module.exports = class CirclePathAlgorithm {
                     minStateTotalInUsd: minStateTotalInUsd,
                 };
             });
+            solResults = solResults.filter(sr => {
+                if(sr === 'TOO_THIN_OPPOSITE_ORDER_BOOK'){
+                    // console.log(`refuse path TOO_THIN_OPPOSITE_ORDER_BOOK`);
+                    return false;
+                }
+                return true;
+            });
+            return solResults;
         });
         return result;
     }

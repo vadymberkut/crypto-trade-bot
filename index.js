@@ -8,7 +8,7 @@ const bitfinexBot = new BitfinexBot({
     apiKey: 'WFb6GxahaWcpfhjFWZJaF5LYb3lcP1ZnyHVPojcmzx9',
     apiSecret: '7n8Awvh3Tpw7ORfCcVi2rM7NTrJwygk3B4c1yn2lVGe',
     currency: 'IOT',
-    maxAmount: 4.8,
+    maxAmount: 1000,
     minPathLength: 3,
     maxPathLength: 5,
     minPathProfitUsd: 0.05 
