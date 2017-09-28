@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 let fs = require('fs');
 let path = require('path');
 let _ = require('lodash');
@@ -125,7 +126,7 @@ module.exports = class CirclePathAlgorithm {
             let isCirclePathEnd = false;
             if(pathLength >= this.minPathLength && pathLength < this.maxPathLength){
                 if(gs == this.startState){
-                    // console.log(`found min length circle path (${this.startState} -> ${gs}); pathLength=`, pathLength);
+                    // logger.log(`found min length circle path (${this.startState} -> ${gs}); pathLength=`, pathLength);
                     // min length circle path reached
                     isCirclePathEnd = true;
                     return {
@@ -137,7 +138,7 @@ module.exports = class CirclePathAlgorithm {
                 }
             }
             else if(pathLength === this.maxPathLength){
-                // console.log('max level reached; pathLength=', pathLength);
+                // logger.log('max level reached; pathLength=', pathLength);
                 if(gs == this.startState){
                     return {
                         state: gs,
@@ -400,7 +401,7 @@ module.exports = class CirclePathAlgorithm {
             });
             solResults = solResults.filter(sr => {
                 if(sr === 'TOO_THIN_OPPOSITE_ORDER_BOOK'){
-                    // console.log(`refuse path TOO_THIN_OPPOSITE_ORDER_BOOK`);
+                    // logger.log(`refuse path TOO_THIN_OPPOSITE_ORDER_BOOK`);
                     return false;
                 }
                 return true;
@@ -411,7 +412,7 @@ module.exports = class CirclePathAlgorithm {
     }
 
     saveToFile(){
-        console.log(`CirclePathAlgorithm: save results to a file`);
+        logger.log(`CirclePathAlgorithm: save results to a file`);
         let date = moment.utc().format('YYYYMMDDHHmmss');
         // const fileName1 = path.join(__dirname, '../logs/circlePathAlgorithm/', `${this.startState}-${date}-pathFindResult.log`);
         // const fileName2 = path.join(__dirname, '../logs/circlePathAlgorithm/', `${this.startState}-${date}-pathCount.log`);

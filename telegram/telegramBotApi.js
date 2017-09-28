@@ -63,15 +63,6 @@ module.exports = class TelegramApi {
         }).catch((err)=>{
             return null;
         });
-        // return http.axios({url: this._buildUrl(endpoint,params), method: 'get'}).then((response) => {
-        //     // let model = new PlatformStatusReponseModel(response);
-        //     // if(!model.validate())
-        //     //     throw new Error(`Invalid response retreived from '${endpoint}' endpoint. response: ${response}`);
-        //     // return model;
-        //     return response;
-        // }).catch((err)=>{
-        //     return null;
-        // });
     }
 
 }

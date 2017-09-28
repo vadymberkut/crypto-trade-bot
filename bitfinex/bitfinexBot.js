@@ -10,6 +10,7 @@ const _ = require('lodash');
 const moment = require('moment');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../utils/logger');
 
 const bitfinexApi = require('./bitfinexApi.js');
 const bitfinexHelper = require('./bitfinexHelper.js');
@@ -24,6 +25,7 @@ let NotificationResponseModel = require('./apiModels/NotificationResponseModel.j
 const BookStore = require('./stores/bookStore.js');
 const WalletStore = require('./stores/walletStore.js');
 const OrderStore = require('./stores/orderStore.js');
+const TradeStore = require('./stores/tradeStore.js');
 const NotificationStore = require('./stores/notificationStore.js');
 const CirclePathAlgorithm = require('./circlePathAlgorithm.js');
 
@@ -80,7 +82,7 @@ const bitfinexOrderExecutionFees = {
 };
 
 const bitfinexMinOrderSize = {
-    'BTC': 0.05, //0.01,
+    'BTC': 0.005, //0.01,
     'ZEC': 0.01,
     'OTHER': 0.1,
 };
@@ -142,6 +144,7 @@ class BitfinexBot {
         this.bookStore = new BookStore();
         this.walletStore = new WalletStore();
         this.orderStore = new OrderStore();
+        this.tradeStore = new TradeStore();
         this.notificationStore = new NotificationStore();
         this.telegramBot = new TelegramBot({httpApiToken: process.env.TELEGRAM_HTTP_API_TOKEN});
         this.saveBookInterval = setInterval(() => {
@@ -150,23 +153,22 @@ class BitfinexBot {
         // }, 5000);
         }, 30000);
 
-        this.telegramBot.getMe().then((user)=>{
-            console.info(user);
-        });
-        this.telegramBot.sendMessage({
-            chat_id: '375693371',
-            text: 'Hi from bot',
+        // this.telegramBot.getMe().then((user)=>{
+        //     logger.info(user);
+        // });
+        // this.telegramBot.sendMessage({
+        //     chat_id: '375693371',
+        //     text: 'Hi from bot',
 
-        }).then((res)=>{
-            console.info(res);
-        });
+        // }).then((res)=>{
+        // });
 
         this.trading = false;
         this.lastTradingMs = (new Date()).getTime();
         this.minTradingIntervalMs = 500;
         this.maxSolveTimeMs = 850; // if greater - do nothing
 
-       this.bitfinexOrderChain = new BitfinexOrderChain(this.bookStore, this.walletStore, this.orderStore, this.telegramBot);
+       this.bitfinexOrderChain = new BitfinexOrderChain(this.bookStore, this.walletStore, this.orderStore, () => this._updateWalletStore());
 
        this.solutionStats = {
            allProfits: [],
@@ -192,7 +194,7 @@ class BitfinexBot {
 
         this.wss.onopen = () => {
             // API keys setup here (See "Authenticated Channels")
-            console.log('wss open');
+            logger.log('wss open');
             this.connecting = false;
             this.connected = true;
             this._auth();
@@ -200,7 +202,7 @@ class BitfinexBot {
         };
 
         this.wss.onclose = () => {
-            console.log('wss close');
+            logger.log('wss close');
             this.connecting = false;
             this.connected = false;
             this.isAuthenticated = false;
@@ -209,7 +211,7 @@ class BitfinexBot {
         };
 
         this.wss.onerror = (err) => {
-            console.erorr('wss error: ', err);
+            logger.erorr('wss error: ', err);
         };
 
         this.wss.onmessage = (response) => {
@@ -217,9 +219,9 @@ class BitfinexBot {
             try {
                 message = JSON.parse(response.data);
             } catch (e) {
-                console.error('[bfx ws2 error] received invalid json');
-                console.error('[bfx ws2 error]', response.data);
-                console.trace();
+                logger.error('[bfx ws2 error] received invalid json');
+                logger.error('[bfx ws2 error]', response.data);
+                logger.trace();
                 return;
             }
             
@@ -231,12 +233,12 @@ class BitfinexBot {
                             throw new Error(`API version changed. Excected v${API_VERSION}, received v${version}`);
                         }
                         else{
-                            console.log(`using api v${version}`);
+                            logger.info(`using api v${version}`);
                         }
                     }
                     if(message.code){
                         let {event, code, msg} = message;
-                        console.log(`ws: ${event} ${code} - ${msg}`);
+                        logger.log(`ws: ${event} ${code} - ${msg}`);
                         // 20051 : Stop/Restart Websocket Server (please reconnect)
                         if(code == 20051){
                             
@@ -256,41 +258,43 @@ class BitfinexBot {
                 }
                 if(message.event == 'subscribed'){
                     let {event, channel, chanId, symbol} = message;
-                    console.log(`subscribed to ${channel} ${chanId} ${symbol}`);
+                    logger.log(`subscribed to ${channel} ${chanId} ${symbol}`);
                     
                     this.channelSubscribtion.confirm(message);
                 }
                 if(message.event == 'unsubscribed'){
                     let {event, status, chanId} = message;
                     if(status == 'OK'){
-                        console.log(`unsubscribed from ${chanId} ${status}`);
+                        logger.log(`unsubscribed from ${chanId} ${status}`);
                         this.channelSubscribtion.remove(message);
                     }
                     else{
-                        console.error(`unsubscribed error from ${chanId} (${status})`);
+                        logger.error(`unsubscribed error from ${chanId} (${status})`);
                     }   
                 }
                 if(message.event == 'auth'){
                     if(message.status == 'OK'){
                         // all is ok - save auth info (userId, auth_id, api permissions)
-                        console.log(`auth OK`, message);
+                        logger.log(`auth OK`, message);
                         this.isAuthenticated = true;
                         this.authInfo = message;
 
                         
-                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.28, 0.12);
-                        // this.bitfinexOrderChain.process(() => {
-                        //     console.log('orders processed');
-                        //     this.bitfinexOrderChain.clear();
-                        // });
+                        this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 80, -9000);
+                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 80, -2);
+                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 80, -2.1);
+                        this.bitfinexOrderChain.process(() => {
+                            logger.log('orders processed');
+                            this.bitfinexOrderChain.clear();
+                        });
                     }
                     else{
-                        console.error(`auth error`, message);
+                        logger.error(`auth error`, message);
                     }
                 }
                 if(message.event == 'error'){
                     let {code, msg} = message;
-                    console.error(`error ${code}: `, msg);
+                    logger.error(`error ${code}: `, msg);
                 }
                 return;
             }
@@ -300,14 +304,14 @@ class BitfinexBot {
                 let msgType = message[1];
 
                 if (msgType == 'hb'){
-                    // console.log(`Received HeatBeart in ${chanId} channel`);
+                    // logger.log(`Received HeatBeart in ${chanId} channel`);
                     return;
                 }
                 // From Bitfinex Docs:
                 // Work In Progress
                 // This section (Notifications) is currently a work in progress, but it will be a way to be alerted as to different changes in status, price alerts, etc
                 if (msgType == 'n'){
-                    console.log(`notification: ${chanId}: `, JSON.stringify(message));
+                    logger.log(`notification: ${chanId}: `, JSON.stringify(message));
                     let data = message[2];
                     let model = new NotificationResponseModel(data);
                     this.notificationStore.update(model);
@@ -333,7 +337,7 @@ class BitfinexBot {
 
                 // listen to user info channels
                 if(chanId === 0){
-                    console.log(`ws: new message in ${chanId} channel: `, message);
+                    logger.log(`ws: new message in ${chanId} channel: `, message);
                     let data = message[2];
                     
                     // wallet snapshot or update
@@ -373,6 +377,14 @@ class BitfinexBot {
                     }
                     // handle trades messages
                     if(msgType == 'te' || msgType == 'tu'){
+                        if(Array.isArray(data) && Array.isArray(data[0])){
+                            let models = data.map((d) => new TradeResponseModel(d));
+                            this.tradeStore.update(models);
+                        }
+                        else if(Array.isArray(data) && !Array.isArray(data[0])){
+                            let model = new TradeResponseModel(data);
+                            this.tradeStore.update(model);
+                        }
                         this.bitfinexOrderChain.newMessage(message);
                         return;
                     }
@@ -385,24 +397,24 @@ class BitfinexBot {
     }
 
     start(){
-        console.log('starting bitfinex bot...')
+        logger.info('starting bitfinex bot...')
         this._connect();
 
         setInterval(() => {
             if (this.connected) return;
-            console.log('reconecting to ws...');
+            logger.log('reconecting to ws...');
             this._connect();
         }, 2500)
 
-        // setTimeout(()=>{
-        //     let tradeInterval = setInterval(() => {
-        //         this._startTrading();
-        //     }, this.minTradingIntervalMs);
-        // }, 5000);
+        setTimeout(()=>{
+            let tradeInterval = setInterval(() => {
+                this._startTrading();
+            }, this.minTradingIntervalMs);
+        }, 5000);
     }
 
     stop(){
-        console.log('stopping bitfinex bot...')
+        logger.info('stopping bitfinex bot...')
         this._unsubscribeFromAll();
     }
 
@@ -432,13 +444,13 @@ class BitfinexBot {
         };
         this.wss.send(JSON.stringify(request), (err) => {
             if(err)
-                console.error(`wss: auth error `, err);
+                logger.error(`wss: auth error `, err);
         });
     }
 
     _subscribeToBook(symbol){
         if(bitfinexSymbols.indexOf(symbol) === -1){
-            console.warn(`can't subscribe to book '${symbol}'`);
+            logger.warn(`can't subscribe to book '${symbol}'`);
             return;
         }
         let request = { 
@@ -455,7 +467,7 @@ class BitfinexBot {
         });
         this.wss.send(JSON.stringify(request), (err) => {
             if(err)
-                console.error(`wss: ${symbol} book subscribe error `, err);
+                logger.error(`wss: ${symbol} book subscribe error `, err);
         });
     }
 
@@ -474,7 +486,7 @@ class BitfinexBot {
             };
             this.wss.send(JSON.stringify(request), (err) => {
                 if(err)
-                    console.error(`wss: channel ${id} unsubscribe error `, err);
+                    logger.error(`wss: channel ${id} unsubscribe error `, err);
             });
         });
     }
@@ -488,18 +500,18 @@ class BitfinexBot {
 
         // check user is autheticated
         if(this.isAuthenticated !== true){
-            console.info(`can't start trading - user not authenticated`);
+            logger.warn(`can't start trading - user not authenticated`);
             return;
         }
         // check user permissioms
         if(this.authInfo.caps.orders.read !== 1 || this.authInfo.caps.orders.write !== 1){
-            console.info(`user must have access to read and write orders`);
+            logger.warn(`user must have access to read and write orders`);
             return;
         }
 
         // wait interval between trades
         if((new Date()).getTime() - this.lastTradingMs < this.minTradingIntervalMs){
-            console.info(`waiting for ${this.minTradingIntervalMs/1000} sec before next trade`);
+            logger.log(`waiting for ${this.minTradingIntervalMs/1000} sec before next trade`);
             return;
         }
 
@@ -525,7 +537,7 @@ class BitfinexBot {
             solutions = circlePathAlgorithm.solve();
         }
         catch(err){
-            console.error(`bitfinexBot: `, err);
+            logger.error(`bitfinexBot: `, err);
             this.trading = false;
             return;
         }
@@ -565,10 +577,10 @@ class BitfinexBot {
         this.solutionStats.maxUsd = _.max(this.solutionStats.allProfitsUsd);
         this.solutionStats.avgUsd = _.sum(this.solutionStats.allProfitsUsd) / this.solutionStats.allProfitsUsd.length;
         this.solutionStats.sumUsd = _.sum(this.solutionStats.allProfitsUsd);
-        console.log(`+${estProfit} ${this.currency}, +${estProfitUsd} USD. `);
-        // console.log('TOTAL:');
-        // console.log(`${'IOT'}: min=${this.solutionStats.min}, max=${this.solutionStats.max}, avg=${ this.solutionStats.avg}, sum=${this.solutionStats.sum}`);
-        // console.log(`USD: min=${this.solutionStats.minUsd}, max=${this.solutionStats.maxUsd}, avg=${this.solutionStats.avgUsd}, sum=${this.solutionStats.sumUsd}`);
+        logger.log(`+${estProfit} ${this.currency}, +${estProfitUsd} USD. `);
+        // logger.log('TOTAL:');
+        // logger.log(`${'IOT'}: min=${this.solutionStats.min}, max=${this.solutionStats.max}, avg=${ this.solutionStats.avg}, sum=${this.solutionStats.sum}`);
+        // logger.log(`USD: min=${this.solutionStats.minUsd}, max=${this.solutionStats.maxUsd}, avg=${this.solutionStats.avgUsd}, sum=${this.solutionStats.sumUsd}`);
 
 
         // TODO
@@ -577,18 +589,18 @@ class BitfinexBot {
         let instructions = solution.instructions;
 
         // TEST
-        instructions = [
-            {
-                transition: 'tIOTUSD',
-                actionPrice: 0.53505,
-                actionAmount: -4.81,
-            },
-            {
-                transition: 'tIOTUSD',
-                actionPrice: 0.53265,
-                actionAmount: 4.81
-            }
-        ];
+        // instructions = [
+        //     {
+        //         transition: 'tIOTUSD',
+        //         actionPrice: 0.53505,
+        //         actionAmount: -4.81,
+        //     },
+        //     {
+        //         transition: 'tIOTUSD',
+        //         actionPrice: 0.53265,
+        //         actionAmount: 4.81
+        //     }
+        // ];
 
         // check min order size
         let allMoreThanMinSize = instructions.reduce((res, ins) => {
@@ -598,12 +610,15 @@ class BitfinexBot {
             return res && Math.abs(ins.actionAmount) >= min;
         }, true);
         if(allMoreThanMinSize === false){
-            console.warn(`skip solution: transition has amount less that min order amount`);
+            logger.warn(`skip solution: transition has amount less that min order amount`);
             this.trading = false;
             return
         }
 
-        this.trading = false;
+        setTimeout(()=>{
+            this.trading = false;
+            this.lastTradingMs = (new Date()).getTime();
+        }, 5000);
         return;
 
         instructions.forEach((ins) => {
@@ -624,7 +639,7 @@ class BitfinexBot {
         const MAX_CID = Math.pow(2, 45) - 1; // int45 - 2^45 - 1
         const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER; // 2^53 - 1
         const MAX_VALUE = Number.MAX_VALUE; // 1.79E+308 = 1.79*10^308
-        let cid = random.randomIntInc(1, MAX_CID) ; // i have tested on 500000 generations - no duplicates
+        let generateCid = () => random.randomIntInc(1, MAX_CID); // i have tested on 500000 generations - no duplicates
 
         let request = [
             0,
@@ -632,22 +647,24 @@ class BitfinexBot {
             null,
             {
                 "gid": gid, // int32 (optional) Group id for the order
-                "cid": cid, // int45 Must be unique in the day (UTC)
+                "cid": generateCid(), // int45 Must be unique in the day (UTC)
                 "type": type.toString(),
                 "symbol": symbol.toString(), // symbol (tBTCUSD, tETHUSD, ...)
-                "amount": amount.toString(), // decimal string, Positive for buy, Negative for sell
+                "amount": amount, // decimal string, Positive for buy, Negative for sell
                 "price": price.toString(), // Price (Not required for market orders)
                 // "price_trailing":  // The trailing price
                 // "price_aux_limit": , // Auxiliary Limit price (for STOP LIMIT)
-                "hidden": 1, // int2 1 or 0
+                "hidden": 0, // int2 1 or 0
                 // "postonly": // int2 (optional) Whether the order is postonly (1) or not (0)
             }
         ];
 
         this.bitfinexOrderChain.enqueue(request, (requestObj) => {
+            // regenerate cid before send
+            requestObj[3].cid = generateCid();
             this.wss.send(JSON.stringify(requestObj), (err) => {
                 if(err){
-                    console.error(`wss: new order error `, err);
+                    logger.error(`wss: new order error `, err);
                 }
             });
         }, (id) => {
@@ -667,7 +684,7 @@ class BitfinexBot {
         ];
         this.wss.send(JSON.stringify(request), (err) => {
             if(err)
-                console.error(`wss: cancel order ${orderId} error `, err);
+                logger.error(`wss: cancel order ${orderId} error `, err);
         });
     }
 
@@ -685,7 +702,7 @@ class BitfinexBot {
         ];
         this.wss.send(JSON.stringify(request), (err) => {
             if(err)
-                console.error(`wss: cancel client order ${clientOrderId} ${clientOrderIdDate} error `, err);
+                logger.error(`wss: cancel client order ${clientOrderId} ${clientOrderIdDate} error `, err);
         });
     }
 
@@ -701,7 +718,7 @@ class BitfinexBot {
             ]
         ]), (err) => {
             if(err)
-                console.error(`wss: calc error `, err);
+                logger.error(`wss: calc error `, err);
         });
     }
 
@@ -720,9 +737,15 @@ class BitfinexBot {
             ];
             this.wss.send(JSON.stringify(request), (err) => {
                 if(err)
-                    console.error(`wss: calc wallet balance error `, err);
+                    logger.error(`wss: calc wallet balance error `, err);
             });
         });
+    }
+
+    // update all wallets info in wallet store
+    _updateWalletStore(){
+        let options = this.walletStore.getWalletsInfo();
+        this._calcWalletBalanceForAll(options);
     }
 }
 

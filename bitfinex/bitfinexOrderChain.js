@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const bitfinexHelper = require('./bitfinexHelper.js');
 
 let OrderResponseModel = require('./apiModels/OrderResponseModel.js');
@@ -6,13 +7,16 @@ let TradeResponseModel = require('./apiModels/TradeResponseModel.js');
 // chain of orders - like queue
 // ensure that orders executed one by one
 module.exports = class BitfinexOrderChain {
-    constructor(bookStore, walletStore, orderStore, telegramBot){
+    constructor(bookStore, walletStore, orderStore, updateWalletStore){
         this.bookStore = bookStore;
         this.walletStore = walletStore;
         this.orderStore = orderStore;
-        this.telegramBot = telegramBot;
+        this.updateWalletStore = updateWalletStore;
+        this.orderPlacedErrorTimeout = null;
         this.limitOrderCancelTimeout = null;
+        this.ORDER_PLACED_ERROR_TIMEOUT = 10000; // waiting for order placed, when expired consider new order error, so recheck order amount and retry
         this.LIMIT_ORDER_CANCEL_TIMEOUT = 30000; // waiting for limit order execution, when expired need to cancel and place again
+        this.WAIT_WALLET_STORE_UPDATE_TIMEOUT = 2000;
         this.clear();
     }
 
@@ -20,13 +24,15 @@ module.exports = class BitfinexOrderChain {
         this.orders = [];
         this.processed = false; // chain processed
         this.processedCallback = (err) => {}; // mock
+        clearTimeout(this.orderPlacedErrorTimeout);
+        clearTimeout(this.limitOrderCancelTimeout);
     }
 
     enqueue(orderRequest, newOrderCallback, cancelOrderCallback){
         let order = {
             request: orderRequest,
-            orderModel: null,
-            tradeModel: null,
+            // orderModel: null,
+            // tradeModel: null,
 
             enqueuedOnMs: (new Date()).getTime(),
             sentOnMs: null,
@@ -67,7 +73,7 @@ module.exports = class BitfinexOrderChain {
     _processNext(){
         // if all executed call processedCallback
         if(this._allProcessed()){
-            console.info(`bitfinexOrderChain: all ${this.orders.length + 1} processed`);
+            logger.info(`bitfinexOrderChain: all ${this.orders.length + 1} processed`);
             this.processed = true;
             this.processedCallback();
             return;
@@ -79,55 +85,116 @@ module.exports = class BitfinexOrderChain {
             return;
         }
 
+        // check for 0 amount
+        if(order.request[3].amount == 0 && order.attempts >= 3){
+            logger.error(`bitfinexOrderChain: detected order with AMOUNT=0 (${order.attempts} send attempts)`, order.request[3]);
+            order.processing = false;
+            order.processed = true;
+            this._processNext();
+            return;
+        }
+
         // check there are no processing orders at the moment
         let processing = this.orders.filter(o => o.processing === true).length !== 0;
         if(processing){
-            // check how long processing. if more than timeout - retry
-            let diff = (new Date()).getTime() - order.sentOnMs;
-            let retryInterval = 2000;
-            if(diff < retryInterval)
-                return;
+            return;
         }
 
-        // let symbol = order.request[3].symbol;
-        // let amount = +order.request[3].amount;
-        // let {pair, base, qoute} = bitfinexHelper.convertSymbolToCurrency(symbol);
-        // let action = amount > 0 ? 'buy' : 'sell';
-        // let amountSign = amount >= 0 ? 1 : -1;
-        // let availableBalance = null;
-        // let availableAmount = null;
-        // if(action == 'buy'){
-        //     availableBalance = this.walletStore.getAvailableWalletBalance('exchange', qoute);
-        //     if(availableBalance === null) return;
-        //     let bestActionPrice = this.bookStore.getBestLimitBookPriceForAction(symbol, action);
-        //     if(bestActionPrice === null) return;
-        //     availableAmount = availableBalance / bestActionPrice;
-        // }
-        // if(action == 'sell'){
-        //     availableBalance = this.walletStore.getAvailableWalletBalance('exchange', base);
-        //     if(availableBalance === null) return;
-        //     availableAmount = availableBalance;
-        // }
-        // if(availableAmount == null) return;
-        // if(Math.abs(amount) > availableAmount){
-        //     // reduce amount to fit balance
-        //     console.log(`bitfinexOrderChain: reduce trade amount from ${order.request[3].amount} to ${availableAmount}`);
-        //     amount = amountSign * availableAmount;
-        // }
-        // if(order.attempts > 0){
-        //     // descrease amount
-        //     let decreasePercent = 0.001; // 0.1%
-        //     amount = amount * (1 - decreasePercent);
-        // }
-        // order.request[3].amount = amount.toString();
         let logMsg = `bitfinexOrderChain: new order CID=${order.request[3].cid} TYPE=${order.request[3].type} SYMBOL=${order.request[3].symbol} PRICE=${order.request[3].price} AMOUNT=${order.request[3].amount} (${order.attempts})`;
-        console.log(logMsg);
+        logger.info(logMsg);
         
         order.processing = true;
         order.sentOnMs = (new Date()).getTime();
         order.attempts += 1;
+        this.orderPlacedErrorTimeout = setTimeout(() => {
+            this._orderPlacedErrorCallback(order);
+        }, this.ORDER_PLACED_ERROR_TIMEOUT);
 
         order.newOrderCallback(order.request);
+    }
+
+    _orderPlacedErrorCallback(order){
+        clearTimeout(this.orderPlacedErrorTimeout);
+        if(order.orderPlaced === true){
+            return;
+        }
+        logger.warn(`bitfinexOrderChain: fired _orderPlacedErrorCallback`);
+        let adjusted = this._adjustOrderPriceAndAmount(order);
+        if(adjusted === true){
+            order.processing = false;
+            this._processNext();
+        }
+        else{
+            // refresh wallet info and retry
+            logger.warn(`bitfinexOrderChain: can't adjust price or amount, fire updateWalletStore`);
+            this.updateWalletStore();
+            clearTimeout(this.orderPlacedErrorTimeout);
+            this.orderPlacedErrorTimeout = setTimeout(() => {
+                clearTimeout(this.orderPlacedErrorTimeout);
+                this._orderPlacedErrorCallback(order);
+            }, this.WAIT_WALLET_STORE_UPDATE_TIMEOUT);
+        }
+    }
+
+    _limitOrderCancelCallback(order){
+        clearTimeout(this.limitOrderCancelTimeout);
+        if(order.processed === true){
+            return;
+        }
+        logger.warn(`bitfinexOrderChain: fired _limitOrderCancelCallback`);
+        let storeOrder = this.orderStore.getOrderByCid(order.request[3].cid)
+        let orderId = storeOrder.ID;
+        order.cancelOrderCallback(orderId);
+        let adjusted = this._adjustOrderPriceAndAmount(order);
+        if(adjusted === true){
+            order.processing = false;
+            this._processNext();
+        }
+        else{
+            // refresh wallet info and retry
+            logger.warn(`bitfinexOrderChain: can't adjust price or amount, fire updateWalletStore`);
+            this.updateWalletStore();
+            clearTimeout(this.limitOrderCancelTimeout);
+            this.orderPlacedErrorTimeout = setTimeout(() => {
+                clearTimeout(this.limitOrderCancelTimeout);
+                this._limitOrderCancelCallback(order);
+            }, this.WAIT_WALLET_STORE_UPDATE_TIMEOUT);
+        }
+    }
+
+    // adjust order amount according to available balance
+    _adjustOrderPriceAndAmount(order){
+        const PRICE_INCREASE_DECREASE_PERCENT = 0.0005; // 0.05%
+        let symbol = order.request[3].symbol;
+        let price = +order.request[3].price;
+        let amount = +order.request[3].amount;
+        let {pair, base, qoute} = bitfinexHelper.convertSymbolToCurrency(symbol);
+        let action = amount > 0 ? 'buy' : 'sell';
+        let amountSign = amount >= 0 ? 1 : -1;
+        let availableBalance = null;
+        if(action == 'buy'){
+            availableBalance = this.walletStore.getAvailableWalletBalance('exchange', qoute);
+            if(availableBalance === null) return false;
+            let bestActionPrice = this.bookStore.getBestLimitBookPriceForAction(symbol, action);
+            if(bestActionPrice === null) return false;
+            // increase price
+            price = bestActionPrice * (1 + PRICE_INCREASE_DECREASE_PERCENT);
+            // adjust amount
+            amount = amountSign * (availableBalance / price);
+        }
+        if(action == 'sell'){
+            availableBalance = this.walletStore.getAvailableWalletBalance('exchange', base);
+            if(availableBalance === null) return false;
+            let bestActionPrice = this.bookStore.getBestLimitBookPriceForAction(symbol, action);
+            if(bestActionPrice === null) return false;
+            // descrease price
+            price = bestActionPrice * (1 - PRICE_INCREASE_DECREASE_PERCENT);
+            // adjust amount
+            amount = amountSign * Math.min(Math.abs(amount), availableBalance);
+        }
+        order.request[3].price = price.toString();
+        order.request[3].amount = amount.toString();
+        return true;
     }
 
     // get proceiing order
@@ -146,7 +213,7 @@ module.exports = class BitfinexOrderChain {
 
     // called when received notification
     newOrderError(notificationModel, orderModel){
-        console.info(`bitfinexOrderChain: new order error CID=${orderModel.CID} TYPE=${orderModel.TYPE} SYMBOL=${orderModel.SYMBOL} PRICE=${orderModel.PRICE} AMOUNT=${orderModel.AMOUNT}`);
+        logger.error(`bitfinexOrderChain: new order error CID=${orderModel.CID} TYPE=${orderModel.TYPE} SYMBOL=${orderModel.SYMBOL} PRICE=${orderModel.PRICE} AMOUNT=${orderModel.AMOUNT}`);
         let cid = orderModel.CID; // id null because order not placed (error occurred))
 
         // check for amount error
@@ -155,23 +222,26 @@ module.exports = class BitfinexOrderChain {
             notificationModel.TEXT.toLowerCase().indexOf('amount') !== -1 &&
             notificationModel.TEXT.toLowerCase().indexOf('invalid') !== -1
         ){
-            console.info(`bitfinexOrderChain: found that error occured due to invalid amount`);
-
-            // TODO - NOTIFY TELEGRAM BOT
-
-            this._processNext();
+            logger.error(`bitfinexOrderChain: from notification error found that error occured due to invalid amount`,{
+                notificationModel: notificationModel,
+                orderModel: orderModel
+            }); // NOTIFY TELEGRAM BOT
         }
         else if(
             notificationModel.STATUS.toLowerCase().indexOf('error') !== -1 &&
             notificationModel.TEXT.toLowerCase().indexOf('price') !== -1 &&
             notificationModel.TEXT.toLowerCase().indexOf('invalid') !== -1
         ){
-            // TODO - NOTIFY TELEGRAM BOT
-            console.info(`bitfinexOrderChain: found that error occured due to invalid price`);
+            logger.error(`bitfinexOrderChain: from notification error found that error occured due to invalid price`,{
+                notificationModel: notificationModel,
+                orderModel: orderModel
+            });  // NOTIFY TELEGRAM BOT
         }
         else{
-            // TODO - NOTIFY TELEGRAM BOT THAT UNKNOW ERROR OCCURED OR BITFINEX NOTIFICATION API CHANGED
-            console.info(`bitfinexOrderChain: notify telegram bot about the error`);
+            logger.error(`bitfinexOrderChain: received unknown notification error (maybe Bitfinex notification API changed)`,{
+                notificationModel: notificationModel,
+                orderModel: orderModel
+            }); // NOTIFY TELEGRAM BOT
         }
     }
 
@@ -193,6 +263,7 @@ module.exports = class BitfinexOrderChain {
             case 'on':
                 order.orderPlaced = true;
                 order.orderPlacedOnMs = (new Date()).getTime();
+                clearInterval(this.orderPlacedErrorTimeout);this.orderPlacedErrorTimeout = null;
                 break;
             case 'ou':
                 order.orderUpdated = true;
@@ -218,19 +289,16 @@ module.exports = class BitfinexOrderChain {
 
         if(order.orderPlaced === true && order.orderUpdated === true && order.tradeExecuted === false && this.limitOrderCancelTimeout === null){
             // wait order execution for a while and cancel
+            // restart with new price and amount
             this.limitOrderCancelTimeout = setTimeout(() => {
-                if(order.processed === true){
-                    return;
-                }
-                let storeOrder = this.orderStore.getOrderByCid(order.request[3].cid)
-                let orderId = storeOrder.ID;
-                order.cancelOrderCallback(orderId);
+                this._limitOrderCancelCallback(order);
             }, this.LIMIT_ORDER_CANCEL_TIMEOUT);
         }
 
         order.processed =  order.tradeExecuted && order.tradeExecutionUpdated;
         if(order.processed === true){
             order.processing = false;
+            clearInterval(this.orderPlacedErrorTimeout);this.orderPlacedErrorTimeout = null;
             clearTimeout(this.limitOrderCancelTimeout);this.limitOrderCancelTimeout = null;
             this._processNext();
         }

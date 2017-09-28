@@ -1,3 +1,4 @@
+const logger = require('../../utils/logger');
 const _ = require('lodash');
 const fs = require('fs');
 const path = require('path');
@@ -69,7 +70,7 @@ module.exports = class BookStore {
               if (!found) {
                 let logMsg = "[" + moment().format() + "] " + symbol + " | " + JSON.stringify(pp) + " BOOK delete fail side not found";
                 fs.appendFileSync(logfile, logMsg + '\n');
-                console.warn(logMsg);
+                logger.warn(logMsg);
               }
             } 
 
@@ -94,7 +95,7 @@ module.exports = class BookStore {
             })
       
             this.BOOK[symbol].psnap[side] = prices
-            //console.log("num price points", side, prices.length)
+            //logger.log("num price points", side, prices.length)
         });
 
         this.BOOK[symbol].mcount++;
@@ -108,14 +109,14 @@ module.exports = class BookStore {
             let lm = [moment.utc().format(), symbol, "bid(" + bid + ")>=ask(" + ask + ")"];
             let logMsg = lm.join(' / ') + "\r\n";
             fs.appendFileSync(logfile, logMsg);
-            // console.warn(logMsg);
+            // logger.warn(logMsg);
         }
     }
 
     saveBookSync() {
         if(!this.BOOK)
             return;
-        // console.log('bookStore: save sync ');
+        // logger.log('bookStore: save sync ');
         const now = moment.utc().format('YYYYMMDDHHmmss');
         const savefile = path.join(__dirname, '../../logs/bitfinex/bookStore/' + 'tmp-ws-book-' + now + '.log');
         fs.writeFileSync(savefile, JSON.stringify(this.BOOK));
@@ -124,7 +125,7 @@ module.exports = class BookStore {
     saveBook() {
         if(!this.BOOK)
             return;
-        // console.log('bookStore: save async');
+        // logger.log('bookStore: save async');
         const now = moment.utc().format('YYYYMMDDHHmmss');
         const savefile = path.join(__dirname, '../../logs/bitfinex/bookStore/' + 'tmp-ws-book-' + now + '.log');
         fs.writeFile(savefile, JSON.stringify(this.BOOK));

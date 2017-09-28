@@ -49,4 +49,19 @@ module.exports = class WalletStore {
         return null;
     }
 
+    // returns info in format [{walletType: string, currency: string}]
+    getWalletsInfo(){
+        let result = [];
+        let walletTypes = Object.keys(this.wallet); // exchange, funding, margin
+        for(let i = 0; i < walletTypes.length; i++){
+            let walletType = walletTypes[i];
+            let currencies = Object.keys(this.wallet[walletType]);
+            for(let j = 0; j < currencies.length; j++){
+                let currency = currencies[j];
+                result.push({walletType: walletType, currency: currency});                
+            }
+        }
+        return result;
+    }
+
 }

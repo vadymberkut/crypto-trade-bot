@@ -1,10 +1,11 @@
-const express = require('express');
-const _ = require('lodash');
-const app = express();
-const port = 3000;
-
 // load config
 require('dotenv').config({path: './development.env'});
+
+const express = require('express');
+const _ = require('lodash');
+const logger = require('./utils/logger');
+const app = express();
+const port = 3000;
 
 const BitfinexBot = require('./bitfinex/bitfinexBot.js');
 const bitfinexBot = new BitfinexBot({
@@ -13,8 +14,8 @@ const bitfinexBot = new BitfinexBot({
     currency: 'IOT',
     maxAmount: 1000,
     minPathLength: 3,
-    maxPathLength: 5,
-    minPathProfitUsd: 0.05 
+    maxPathLength: 4,
+    minPathProfitUsd: 5 
 });
 bitfinexBot.start();
 
