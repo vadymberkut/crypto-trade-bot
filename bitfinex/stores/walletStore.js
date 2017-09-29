@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const moment = require('moment');
 
+const bitfinexConstants = require('../bitfinexConstants.js');
+
 module.exports = class WalletStore {
     constructor(){
         this.clear();
@@ -10,9 +12,9 @@ module.exports = class WalletStore {
 
     clear(){
         this.wallet = {
-            'exchange': {},
-            'margin': {},
-            'funding': {},
+            [bitfinexConstants.walletTypes.EXCHANGE]: {},
+            [bitfinexConstants.walletTypes.MARGIN]: {},
+            [bitfinexConstants.walletTypes.FUNDING]: {}
         };
         this.updating = false;
     }

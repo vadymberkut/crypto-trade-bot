@@ -58,7 +58,7 @@ process.on('uncaughtException', processExitHandler.bind(null, {cleanup: true, ex
 
 function processExitHandler(options, err){
     if(options.cleanup){
-        bitfinexBot.stop();
+        
     }
     if(err){
         console.log('uncaught exception. exiting...');
@@ -66,7 +66,12 @@ function processExitHandler(options, err){
     }
     if(options.exit){
         console.log('exiting...');
-        process.exit();
+        bitfinexBot.stop().then(() => {
+            logger.infoImportant('bitfinex bot gracefully stopped');
+            process.exit();
+        }).catch((err)=>{
+            logger.error(`error occured while stoping bitfinex bot: `, err);
+        });
     }
 }
 

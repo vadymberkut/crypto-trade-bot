@@ -1,8 +1,19 @@
 const logger = require('../utils/logger');
+let fs = require('fs');
+let path = require('path');
+let _ = require('lodash');
+let moment = require('moment');
+const bitfinexConstants = require('./bitfinexConstants.js');
 const bitfinexHelper = require('./bitfinexHelper.js');
-
 let OrderResponseModel = require('./apiModels/OrderResponseModel.js');
 let TradeResponseModel = require('./apiModels/TradeResponseModel.js');
+
+function getMinOrderSize(currency){
+    if(bitfinexConstants.minOrderSize[currency]){
+        return bitfinexConstants.minOrderSize[currency];
+    }
+    return bitfinexConstants.minOrderSize['OTHER'];
+}
 
 // chain of orders - like queue
 // ensure that orders executed one by one
@@ -16,6 +27,7 @@ module.exports = class BitfinexOrderChain {
         this.limitOrderCancelTimeout = null;
         this.ORDER_PLACED_ERROR_TIMEOUT = 10000; // waiting for order placed, when expired consider new order error, so recheck order amount and retry
         this.LIMIT_ORDER_CANCEL_TIMEOUT = 30000; // waiting for limit order execution, when expired need to cancel and place again
+        this.LIMIT_ORDER_CANCEL_TIMEOUT_WHEN_PARTIALLY_EXECUTED = 60000;
         this.WAIT_WALLET_STORE_UPDATE_TIMEOUT = 2000;
         this.clear();
     }
@@ -47,6 +59,7 @@ module.exports = class BitfinexOrderChain {
             orderCanceled: false, // oc - order cancel
             orderRequestedToBeCanceled: false, // oc-req - order cancel by user
             tradeExecuted: false, // te - trade executed
+            tradeExecutedPartially: false,
             tradeExecutionUpdated: false, // tu - trade execution update
 
             orderPlacedOnMs: null,
@@ -65,64 +78,60 @@ module.exports = class BitfinexOrderChain {
     // start the chain
     process(processedCallback){
         this.processedCallback = processedCallback;
-        this._processNext();
+        if(this.orders.length === 0){
+            this.processedCallback();
+            return;
+        }
+        this._processNext(this.orders[0]);
     }
 
     
     // process next order only if processing not started or prev order executed
-    _processNext(){
+    _processNext(order = null){
         // if all executed call processedCallback
-        if(this._allProcessed()){
-            logger.info(`bitfinexOrderChain: all ${this.orders.length + 1} processed`);
+        if(order === null && this._allProcessed()){
+            logger.info(`bitfinexOrderChain: all ${this.orders.length} processed`);
             this.processed = true;
             this.processedCallback();
             return;
         }
 
-        // get next not executed order (or current executing)
-        let order = this.orders.find(o => o.processed === false && o.tradeExecuted === false && o.tradeExecutionUpdated === false);
-        if(!order){
-            return;
-        }
-
         // check for 0 amount
-        if(order.request[3].amount == 0 && order.attempts >= 3){
+        if(+order.request[3].amount == 0 && order.attempts >= 3){
             logger.error(`bitfinexOrderChain: detected order with AMOUNT=0 (${order.attempts} send attempts)`, order.request[3]);
             order.processing = false;
             order.processed = true;
-            this._processNext();
+            this._processNext(this._getNextOrder());
             return;
         }
 
-        // check there are no processing orders at the moment
-        let processing = this.orders.filter(o => o.processing === true).length !== 0;
-        if(processing){
+        // check for amount less than minimum
+        let {pair, base, qoute} = bitfinexHelper.convertSymbolToCurrency(order.request[3].symbol);
+        let min = Math.min(getMinOrderSize(base), getMinOrderSize(qoute));
+        if(Math.abs(+order.request[3].amount) < min){
+            logger.error(`bitfinexOrderChain: detected order with less than min amount AMOUNT=${+order.request[3].amount} (${order.attempts} send attempts)`, order.request[3]);
+            order.processing = false;
+            order.processed = true;
+            this._processNext(this._getNextOrder());
             return;
         }
 
         let logMsg = `bitfinexOrderChain: new order CID=${order.request[3].cid} TYPE=${order.request[3].type} SYMBOL=${order.request[3].symbol} PRICE=${order.request[3].price} AMOUNT=${order.request[3].amount} (${order.attempts})`;
-        logger.info(logMsg);
+        logger.infoImportant(logMsg);
         
         order.processing = true;
         order.sentOnMs = (new Date()).getTime();
         order.attempts += 1;
-        this.orderPlacedErrorTimeout = setTimeout(() => {
-            this._orderPlacedErrorCallback(order);
-        }, this.ORDER_PLACED_ERROR_TIMEOUT);
-
         order.newOrderCallback(order.request);
     }
 
     _orderPlacedErrorCallback(order){
         clearTimeout(this.orderPlacedErrorTimeout);
-        if(order.orderPlaced === true){
-            return;
-        }
         logger.warn(`bitfinexOrderChain: fired _orderPlacedErrorCallback`);
         let adjusted = this._adjustOrderPriceAndAmount(order);
         if(adjusted === true){
-            order.processing = false;
-            this._processNext();
+            // order.processing = false;
+            this._processNext(order);
         }
         else{
             // refresh wallet info and retry
@@ -139,23 +148,34 @@ module.exports = class BitfinexOrderChain {
     _limitOrderCancelCallback(order){
         clearTimeout(this.limitOrderCancelTimeout);
         if(order.processed === true){
+            this._processNext(order);
             return;
         }
         logger.warn(`bitfinexOrderChain: fired _limitOrderCancelCallback`);
-        let storeOrder = this.orderStore.getOrderByCid(order.request[3].cid)
-        let orderId = storeOrder.ID;
-        order.cancelOrderCallback(orderId);
+        if(this.orderStore.checkOrderActiveByCid(order.request[3].cid)){
+            let storeOrder = this.orderStore.getOrderByCid(order.request[3].cid)
+            if(!storeOrder){
+                logger.error(`bitfinexOrderChain: can't find order with CID=${order.request[3].cid} on orderStore`, order);
+                return;
+            }
+            let orderId = storeOrder.ID;
+            order.cancelOrderCallback(orderId);
+            logger.infoImportant(`bitfinexOrderChain: cancel order with ID=${orderId} CID=${order.request[3].cid}`);
+            return;
+        }
         let adjusted = this._adjustOrderPriceAndAmount(order);
         if(adjusted === true){
-            order.processing = false;
-            this._processNext();
+            // order.processing = false;
+            order.orderPlaced = false;
+            order.orderUpdated = false;
+            this._processNext(order);
         }
         else{
             // refresh wallet info and retry
             logger.warn(`bitfinexOrderChain: can't adjust price or amount, fire updateWalletStore`);
             this.updateWalletStore();
             clearTimeout(this.limitOrderCancelTimeout);
-            this.orderPlacedErrorTimeout = setTimeout(() => {
+            this.limitOrderCancelTimeout = setTimeout(() => {
                 clearTimeout(this.limitOrderCancelTimeout);
                 this._limitOrderCancelCallback(order);
             }, this.WAIT_WALLET_STORE_UPDATE_TIMEOUT);
@@ -192,6 +212,8 @@ module.exports = class BitfinexOrderChain {
             // adjust amount
             amount = amountSign * Math.min(Math.abs(amount), availableBalance);
         }
+        // subtract fee
+        amount = amount * (1 - 0.002);
         order.request[3].price = price.toString();
         order.request[3].amount = amount.toString();
         return true;
@@ -206,42 +228,114 @@ module.exports = class BitfinexOrderChain {
         return order;
     }
 
+    // get next unprocessed order
+    _getNextOrder(){
+        for(let i =0; i < this.orders.length; i++){
+            if(this.orders[i].processed === false){
+                return this.orders[i];
+            }
+        }
+        return null;
+    }
+
+    _getOrderByCid(cid){
+        let order = this.orders.find(o => o.request[3].cid == cid);
+        return order || null;
+    }
+
     _allProcessed(){
         let allProcessed = this.orders.filter(o => o.processed === false).length === 0;
         return allProcessed;
     }
 
     // called when received notification
-    newOrderError(notificationModel, orderModel){
-        logger.error(`bitfinexOrderChain: new order error CID=${orderModel.CID} TYPE=${orderModel.TYPE} SYMBOL=${orderModel.SYMBOL} PRICE=${orderModel.PRICE} AMOUNT=${orderModel.AMOUNT}`);
-        let cid = orderModel.CID; // id null because order not placed (error occurred))
-
-        // check for amount error
+    newOrderNotification(notificationModel, orderModel){
         if(
-            notificationModel.STATUS.toLowerCase().indexOf('error') !== -1 &&
-            notificationModel.TEXT.toLowerCase().indexOf('amount') !== -1 &&
-            notificationModel.TEXT.toLowerCase().indexOf('invalid') !== -1
+            notificationModel.STATUS == bitfinexConstants.notificationStatuses.ERROR ||
+            notificationModel.STATUS == bitfinexConstants.notificationStatuses.FAILURE
         ){
-            logger.error(`bitfinexOrderChain: from notification error found that error occured due to invalid amount`,{
-                notificationModel: notificationModel,
-                orderModel: orderModel
-            }); // NOTIFY TELEGRAM BOT
+            logger.error(`bitfinexOrderChain: new order error CID=${orderModel.CID} TYPE=${orderModel.TYPE} SYMBOL=${orderModel.SYMBOL} PRICE=${orderModel.PRICE} AMOUNT=${orderModel.AMOUNT}: ${notificationModel.TEXT}`);
+            let cid = orderModel.CID; // id null because order not placed (error occurred))
+
+            // adjust order price, amount and retry
+            let order = this._getOrderByCid(orderModel.CID);
+            if(order === null){
+                order = this._getProcessingOrder();
+            }
+            if(order === null){
+                logger.error(`bitfinexOrderChain: can't find order by CID and current processing order after new order error received`,{
+                    notificationModel: notificationModel,
+                    orderModel: orderModel
+                }); // NOTIFY TELEGRAM BOT
+                return;
+            }
+            this._orderPlacedErrorCallback(order);
+            return;
         }
-        else if(
-            notificationModel.STATUS.toLowerCase().indexOf('error') !== -1 &&
-            notificationModel.TEXT.toLowerCase().indexOf('price') !== -1 &&
-            notificationModel.TEXT.toLowerCase().indexOf('invalid') !== -1
+        if(notificationModel.STATUS == bitfinexConstants.notificationStatuses.SUCCESS){
+            logger.infoImportant(notificationModel.TEXT);
+            return;
+        }
+
+        // unknow message
+        logger.error(`bitfinexOrderChain: received unknown notification error (maybe Bitfinex notification API changed): ${notificationModel.TEXT}`,{
+            notificationModel: notificationModel,
+            orderModel: orderModel
+        }); // NOTIFY TELEGRAM BOT
+
+        //// check for amount error
+        // if(
+        //     notificationModel.STATUS.toLowerCase().indexOf('error') !== -1 &&
+        //     notificationModel.TEXT.toLowerCase().indexOf('amount') !== -1 &&
+        //     notificationModel.TEXT.toLowerCase().indexOf('invalid') !== -1
+        // ){
+        //     logger.error(`bitfinexOrderChain: from notification error found that error occured due to invalid amount`,{
+        //         notificationModel: notificationModel,
+        //         orderModel: orderModel
+        //     }); // NOTIFY TELEGRAM BOT
+        // }
+        // else if(
+        //     notificationModel.STATUS.toLowerCase().indexOf('error') !== -1 &&
+        //     notificationModel.TEXT.toLowerCase().indexOf('price') !== -1 &&
+        //     notificationModel.TEXT.toLowerCase().indexOf('invalid') !== -1
+        // ){
+        //     logger.error(`bitfinexOrderChain: from notification error found that error occured due to invalid price`,{
+        //         notificationModel: notificationModel,
+        //         orderModel: orderModel
+        //     });  // NOTIFY TELEGRAM BOT
+        // }
+        // else{
+        //     logger.error(`bitfinexOrderChain: received unknown notification error (maybe Bitfinex notification API changed)`,{
+        //         notificationModel: notificationModel,
+        //         orderModel: orderModel
+        //     }); // NOTIFY TELEGRAM BOT
+        // }
+    }
+
+    // notificationModel example:
+    // [0,"n",[null,"oc-req",null,null,[4051500125,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,0,null,null],null,"SUCCESS","Submitted for cancellation; waiting for confirmation (ID: 4051500125)."]]
+    newOrderCancelNotification(notificationModel, orderModel){
+        logger.log(`bitfinexOrderChain: new order cancel notification: ${notificationModel.TEXT}`);
+
+        if(
+            notificationModel.STATUS == bitfinexConstants.notificationStatuses.ERROR ||
+            notificationModel.STATUS == bitfinexConstants.notificationStatuses.FAILURE
         ){
-            logger.error(`bitfinexOrderChain: from notification error found that error occured due to invalid price`,{
-                notificationModel: notificationModel,
-                orderModel: orderModel
-            });  // NOTIFY TELEGRAM BOT
-        }
-        else{
-            logger.error(`bitfinexOrderChain: received unknown notification error (maybe Bitfinex notification API changed)`,{
-                notificationModel: notificationModel,
-                orderModel: orderModel
-            }); // NOTIFY TELEGRAM BOT
+            logger.error(`bitfinexOrderChain: new order cancel error CID=${orderModel.CID} TYPE=${orderModel.TYPE} SYMBOL=${orderModel.SYMBOL} PRICE=${orderModel.PRICE} AMOUNT=${orderModel.AMOUNT}: ${notificationModel.TEXT}`);
+            let id = orderModel.ID; // all other fields null
+            
+
+            // retry cancel
+            let order = order = this._getProcessingOrder();
+            if(order === null){
+                logger.error(`bitfinexOrderChain: can't find current processing order after new order cancel error received`,{
+                    notificationModel: notificationModel,
+                    orderModel: orderModel
+                }); // NOTIFY TELEGRAM BOT
+                return;
+            }
+            this._limitOrderCancelCallback(order);
+            return;
         }
     }
 
@@ -251,9 +345,27 @@ module.exports = class BitfinexOrderChain {
         let msgType = wsMessage[1];
         let msgData = wsMessage[2]; // I CAN'T FIND DOCS FOR THIS
 
+        let model;
+
         let order = this._getProcessingOrder();
         if(order === null){
             return;
+        }
+        let storeOrder = this.orderStore.getOrderByCid(order.request[3].cid);
+        if(storeOrder === null){
+            return;
+        }
+
+        // 1.234 -> 3
+        let getPrecision = function(a) {
+            a = +a;
+            if (!isFinite(a)) return 0;
+            var e = 1, p = 0;
+            while (Math.round(a * e) / e !== a) { e *= 10; p++; }
+            return p;
+        }
+        let toPrecision = function(a, prec){
+            return +((+a).toFixed(prec));
         }
 
         // on -> oc -> te -> tu
@@ -263,7 +375,13 @@ module.exports = class BitfinexOrderChain {
             case 'on':
                 order.orderPlaced = true;
                 order.orderPlacedOnMs = (new Date()).getTime();
-                clearInterval(this.orderPlacedErrorTimeout);this.orderPlacedErrorTimeout = null;
+                
+                // wait order execution for a while and cancel
+                // restart with new price and amount
+                clearTimeout(this.limitOrderCancelTimeout);
+                this.limitOrderCancelTimeout = setTimeout(() => {
+                    this._limitOrderCancelCallback(order);
+                }, this.LIMIT_ORDER_CANCEL_TIMEOUT);
                 break;
             case 'ou':
                 order.orderUpdated = true;
@@ -272,14 +390,38 @@ module.exports = class BitfinexOrderChain {
             case 'oc':
                 order.orderCanceled = true;
                 order.orderCanceledOnMs = (new Date()).getTime();
+                if(storeOrder.ORDER_STATUS == bitfinexConstants.orderStatuses.CANCELED){
+                    this.updateWalletStore();
+                    clearTimeout(this.limitOrderCancelTimeout);
+                    this.limitOrderCancelTimeout = setTimeout(() => {
+                        clearTimeout(this.limitOrderCancelTimeout);
+                        this._limitOrderCancelCallback(order);
+                    }, this.WAIT_WALLET_STORE_UPDATE_TIMEOUT);
+                }
                 break;
             case 'oc-req':
                 order.orderRequestedToBeCanceled = true;
                 order.orderRequestedToBeCanceledOnMs = (new Date()).getTime();
                 break;
             case 'te':
-                order.tradeExecuted = true;
-                order.tradeExecutedOnMs = (new Date()).getTime(); 
+                model = new TradeResponseModel(msgData);
+                let precision = getPrecision(Math.abs(model.EXEC_AMOUNT));
+                let roundedAmount = toPrecision(Math.abs(+order.request[3].amount), precision);
+                if(Math.abs(model.EXEC_AMOUNT) >= roundedAmount){
+                    // fully executed
+                    order.tradeExecuted = true;
+                    order.tradeExecutedOnMs = (new Date()).getTime(); 
+                }
+                else{
+                    // partially executed
+                    // wait full execution
+                    order.tradeExecutedPartially = true;
+
+                    clearTimeout(this.limitOrderCancelTimeout);
+                    this.limitOrderCancelTimeout = setTimeout(() => {
+                        this._limitOrderCancelCallback(order);
+                    }, this.LIMIT_ORDER_CANCEL_TIMEOUT_WHEN_PARTIALLY_EXECUTED);
+                }
                 break;
             case 'tu':
                 order.tradeExecutionUpdated = true;
@@ -287,24 +429,26 @@ module.exports = class BitfinexOrderChain {
                 break;
         }
 
-        if(order.orderPlaced === true && order.orderUpdated === true && order.tradeExecuted === false && this.limitOrderCancelTimeout === null){
-            // wait order execution for a while and cancel
-            // restart with new price and amount
-            this.limitOrderCancelTimeout = setTimeout(() => {
-                this._limitOrderCancelCallback(order);
-            }, this.LIMIT_ORDER_CANCEL_TIMEOUT);
-        }
-
-        order.processed =  order.tradeExecuted && order.tradeExecutionUpdated;
+        order.processed =  order.tradeExecuted;
         if(order.processed === true){
+            let logMsg = `bitfinexOrderChain: new order processed CID=${order.request[3].cid} TYPE=${order.request[3].type} SYMBOL=${order.request[3].symbol} PRICE=${order.request[3].price} AMOUNT=${order.request[3].amount} (${order.attempts})`;
+            logger.infoImportant(logMsg);
             order.processing = false;
-            clearInterval(this.orderPlacedErrorTimeout);this.orderPlacedErrorTimeout = null;
             clearTimeout(this.limitOrderCancelTimeout);this.limitOrderCancelTimeout = null;
-            this._processNext();
+            let nextOrder = this._getNextOrder();
+            this._processNext(nextOrder);
         }
     }
 
-    saveState(){
+    // walletUpdated(){
 
+    // }
+
+    // save this to file
+    save(){
+        let date = moment.utc().format('YYYYMMDDHHmmss');
+        const fileName = path.join(__dirname, '../logs/bitfinex/orderChain/', `${date}.log`);
+        let data = JSON.stringify(this);
+        fs.writeFileSync(fileName, data);
     }
 }

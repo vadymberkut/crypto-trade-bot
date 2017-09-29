@@ -47,10 +47,10 @@ module.exports = class TradeResponseModel {
         this.PAIR = apiResponseData[1]; // Pair (BTCUSD, …)
         this.MTS_CREATE = apiResponseData[2]; // Execution timestamp
         this.ORDER_ID = apiResponseData[3]; // Order id
-        this.EXEC_AMOUNT = apiResponseData[4]; // Positive means buy, negative means sell
-        this.EXEC_PRICE = apiResponseData[5]; // Execution price
+        this.EXEC_AMOUNT = +apiResponseData[4]; // Positive means buy, negative means sell
+        this.EXEC_PRICE = +apiResponseData[5]; // Execution price
         this.ORDER_TYPE = apiResponseData[6]; // Order type
-        this.ORDER_PRICE = apiResponseData[7]; // Order price
+        this.ORDER_PRICE = +apiResponseData[7]; // Order price
         this.MAKER = apiResponseData[8]; // 1 if true, 0 if false
 
         // these fileds sent on tu

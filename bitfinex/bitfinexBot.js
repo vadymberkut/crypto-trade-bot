@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 
+const bitfinexConstants = require('./bitfinexConstants.js');
 const bitfinexApi = require('./bitfinexApi.js');
 const bitfinexHelper = require('./bitfinexHelper.js');
 const BitfinexOrderChain = require('./bitfinexOrderChain.js');
@@ -33,77 +34,13 @@ const random = require('../utils/random.js');
 
 const TelegramBot = require('../telegram/telegramBot.js');
 
-const API_VERSION = 2;
-
-const bitfinexSymbols = [
-    'tBTCUSD', 
-    'tBCHUSD', 'tBCHBTC', 'tBCHETH',
-    'tETHUSD', 'tETHBTC',
-    'tETCUSD', 'tETCBTC',
-    'tLTCUSD', 'tLTCBTC',
-    'tIOTUSD', 'tIOTBTC', 'tIOTETH',
-    'tNEOUSD', 'tNEOBTC', 'tNEOETH',
-    'tSANUSD', 'tSANBTC', 'tSANETH',
-    'tXMRUSD', 'tXMRBTC',
-    'tOMGUSD', 'tOMGBTC', 'tOMGETH',
-    'tZECUSD', 'tZECBTC',
-    'tDSHUSD', 'tDSHBTC',
-    'tXRPUSD', 'tXRPBTC',
-    'tEOSUSD', 'tEOSBTC', 'tEOSETH'
-];
-
-const bitfinexOrderTypes = {
-    MARKET: 'MARKET',
-    EXCHANGE_MARKET: 'EXCHANGE MARKET',
-    LIMIT: 'LIMIT',
-    EXCHANGE_LIMIT: 'EXCHANGE LIMIT',
-    STOP: 'STOP',
-    EXCHANGE_STOP: 'EXCHANGE STOP',
-    TRAILING_STOP: 'TRAILING STOP',
-    EXCHANGE_TRAILING_STOP: 'EXCHANGE TRAILING STOP',
-    FOK: 'FOK',
-    EXCHANGE_FOK: 'EXCHANGE FOK',
-    STOP_LIMIT: 'STOP LIMIT',
-    EXCHANGE_STOP_LIMIT: 'EXCHANGE STOP LIMIT',
-};
-
-const bitfinexWalletTypes = {
-    EXCHANGE: 'exchange',
-    MARGIN: 'margin',
-    FUNDING: 'funding',
-};
-
-// Maker fees are paid when you add liquidity to our order book by placing a limit order under the ticker price for buy and above the ticker price for sell.
-// Taker fees are paid when you remove liquidity from our order book by placing any order that is executed against an order of the order book.
-// Note: If you place a hidden order, you will always pay the taker fee. If you place a limit order that hits a hidden order, you will always pay the maker fee.
-const bitfinexOrderExecutionFees = {
-    maker:  0.001, // 0.1 %
-    taker:  0.002, // 0.2 %
-};
-
-const bitfinexMinOrderSize = {
-    'BTC': 0.005, //0.01,
-    'ZEC': 0.01,
-    'OTHER': 0.1,
-};
 function getMinOrderSize(currency){
-    if(bitfinexMinOrderSize[currency]){
-        return bitfinexMinOrderSize[currency];
+    if(bitfinexConstants.minOrderSize[currency]){
+        return bitfinexConstants.minOrderSize[currency];
     }
-    return bitfinexMinOrderSize['OTHER'];
+    return bitfinexConstants.minOrderSize['OTHER'];
 }
 
-const CLIENT_ORDER_ID_DATE_FORMAT = 'YYYY-MM-DD';
-
-const BITFINEX_MAX_CALCULATIONS_PER_BATCH = 30;
-
-const bitfinexOrderStatuses = {
-    ACTIVE: 'ACTIVE',
-    EXECUTED: 'EXECUTED',
-    PARTIALLY: 'PARTIALLY',
-    FILLED: 'FILLED',
-    CANCELED: 'CANCELED'
-};
 
 class BitfinexBot {
     constructor(options){
@@ -226,11 +163,13 @@ class BitfinexBot {
             }
             
             if (!Array.isArray(message) && message.event){
+                // logger.log(`ws: new message: `, JSON.stringify(message));
+
                 if(message.event == 'info'){
                     if(message.version){
                         let {event, version} = message;
-                        if(version !== API_VERSION){
-                            throw new Error(`API version changed. Excected v${API_VERSION}, received v${version}`);
+                        if(version !== bitfinexConstants.API_VERSION){
+                            throw new Error(`API version changed. Excected v${bitfinexConstants.API_VERSION}, received v${version}`);
                         }
                         else{
                             logger.info(`using api v${version}`);
@@ -280,11 +219,11 @@ class BitfinexBot {
                         this.authInfo = message;
 
                         
-                        this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 80, -9000);
-                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 80, -2);
-                        // this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 80, -2.1);
+                        this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.6, -10);
+                        this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.3, 10);
                         this.bitfinexOrderChain.process(() => {
-                            logger.log('orders processed');
+                            logger.infoImportant('ORDERS PROCESSED');
+                            this.bitfinexOrderChain.save();
                             this.bitfinexOrderChain.clear();
                         });
                     }
@@ -300,6 +239,7 @@ class BitfinexBot {
             }
             // handle channel
             else{
+                // logger.log(`ws: new message: `, JSON.stringify(message));
                 let chanId = message[0];
                 let msgType = message[1];
 
@@ -318,10 +258,12 @@ class BitfinexBot {
                     // new order notification
                     if(model.TYPE == 'on-req'){
                         let orderModel = new OrderResponseModel(model.NOTIFY_INFO);
-                        this.bitfinexOrderChain.newOrderError(model, orderModel);
+                        this.bitfinexOrderChain.newOrderNotification(model, orderModel);
                     }
                     // order cancel notification
                     if(model.TYPE == 'oc-req'){
+                        let orderModel = new OrderResponseModel(model.NOTIFY_INFO);
+                        this.bitfinexOrderChain.newOrderCancelNotification(model, orderModel);
                     }
                     if(model.TYPE == 'uca'){
                         
@@ -337,7 +279,7 @@ class BitfinexBot {
 
                 // listen to user info channels
                 if(chanId === 0){
-                    logger.log(`ws: new message in ${chanId} channel: `, message);
+                    logger.log(`ws: new message in ${chanId} channel: `, JSON.stringify(message));
                     let data = message[2];
                     
                     // wallet snapshot or update
@@ -397,7 +339,7 @@ class BitfinexBot {
     }
 
     start(){
-        logger.info('starting bitfinex bot...')
+        logger.infoImportant('starting bitfinex bot...')
         this._connect();
 
         setInterval(() => {
@@ -414,8 +356,16 @@ class BitfinexBot {
     }
 
     stop(){
-        logger.info('stopping bitfinex bot...')
-        this._unsubscribeFromAll();
+        logger.infoImportant('stopping bitfinex bot...');
+        return new Promise((resolve, reject)=>{
+            let interval = setInterval(() => {
+                if(this.trading == false){
+                    clearInterval(interval);
+                    this._unsubscribeFromAll();
+                    resolve();
+                }
+            }, 50);
+        });
     }
 
     // Auth
@@ -434,13 +384,13 @@ class BitfinexBot {
 
             // Channel filters
             // During authentication you can provide an array to indicate which informations/messages you are interested to receive (default = everything).
-            filter: [
-                'trading', //orders, positions, trades 
-                // 'funding', //offers, credits, loans, funding trades
-                'wallet', //wallet 
-                'algo', //algorithmic orders
-                'balance' //balance (tradable balance, ...)
-              ]
+            // filter: [
+            //     'trading', //orders, positions, trades 
+            //     // 'funding', //offers, credits, loans, funding trades
+            //     'wallet', //wallet 
+            //     'algo', //algorithmic orders
+            //     'balance' //balance (tradable balance, ...)
+            //   ]
         };
         this.wss.send(JSON.stringify(request), (err) => {
             if(err)
@@ -449,7 +399,7 @@ class BitfinexBot {
     }
 
     _subscribeToBook(symbol){
-        if(bitfinexSymbols.indexOf(symbol) === -1){
+        if(bitfinexConstants.symbols.indexOf(symbol) === -1){
             logger.warn(`can't subscribe to book '${symbol}'`);
             return;
         }
@@ -472,7 +422,7 @@ class BitfinexBot {
     }
 
     _subscribeToAllBooks(){
-        bitfinexSymbols.forEach((symbol) => {
+        bitfinexConstants.symbols.forEach((symbol) => {
             this._subscribeToBook(symbol);
         });
     }
@@ -515,7 +465,7 @@ class BitfinexBot {
             return;
         }
 
-        if(this.channelSubscribtion.checkAllBooksConfirmed(bitfinexSymbols) === false) return;
+        if(this.channelSubscribtion.checkAllBooksConfirmed(bitfinexConstants.symbols) === false) return;
 
         this.trading = true;
         let hrstart, hrend, executionMs;
@@ -531,7 +481,7 @@ class BitfinexBot {
                 this.minPathLength, 
                 this.maxPathLength, 
                 this.minPathProfitUsd, 
-                bitfinexOrderExecutionFees.taker,
+                bitfinexConstants.orderExecutionFees.taker,
                 bitfinexHelper
             );
             solutions = circlePathAlgorithm.solve();
@@ -618,15 +568,16 @@ class BitfinexBot {
         setTimeout(()=>{
             this.trading = false;
             this.lastTradingMs = (new Date()).getTime();
-        }, 5000);
+        }, 60000);
         return;
 
         instructions.forEach((ins) => {
-            this._addNewOrderRequestToChain(bitfinexOrderTypes.EXCHANGE_LIMIT, ins.transition, ins.actionPrice, ins.actionAmount);
+            this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, ins.transition, ins.actionPrice, ins.actionAmount);
         });
         this.bitfinexOrderChain.process(() => {
             this.trading = false;
             this.lastTradingMs = (new Date()).getTime();
+            this.bitfinexOrderChain.save();
             this.bitfinexOrderChain.clear();
         });
         hrend = process.hrtime(hrstart);
@@ -650,7 +601,7 @@ class BitfinexBot {
                 "cid": generateCid(), // int45 Must be unique in the day (UTC)
                 "type": type.toString(),
                 "symbol": symbol.toString(), // symbol (tBTCUSD, tETHUSD, ...)
-                "amount": amount, // decimal string, Positive for buy, Negative for sell
+                "amount": amount.toString(), // decimal string, Positive for buy, Negative for sell
                 "price": price.toString(), // Price (Not required for market orders)
                 // "price_trailing":  // The trailing price
                 // "price_aux_limit": , // Auxiliary Limit price (for STOP LIMIT)
@@ -690,7 +641,7 @@ class BitfinexBot {
 
     // The Client Order ID is unique per day, so you also have to provide the date of the order as a date string in this format YYYY-MM-DD.
     _cancelOrderByClientOrderId(clientOrderId, clientOrderIdDateTimestamp){
-        let clientOrderIdDate = moment(clientOrderIdDateTimestamp).format(CLIENT_ORDER_ID_DATE_FORMAT);
+        let clientOrderIdDate = moment(clientOrderIdDateTimestamp).format(bitfinexConstants.CLIENT_ORDER_ID_DATE_FORMAT);
         let request = [
             0,
             'oc',
@@ -725,7 +676,7 @@ class BitfinexBot {
     // options = [{walletType: string, currency: string}]
     _calcWalletBalanceForAll(options){
         if(!options || options.length === 0) return;
-        let chunkSize = Math.min(options.length, BITFINEX_MAX_CALCULATIONS_PER_BATCH);
+        let chunkSize = Math.min(options.length, bitfinexConstants.MAX_CALCULATIONS_PER_BATCH);
         let chunks = _.chunk(options, chunkSize);
         chunks.forEach(chunk => {
             let requestData = chunk.map(o => [`wallet_${o.walletType}_${o.currency}`]);

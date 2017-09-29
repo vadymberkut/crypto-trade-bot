@@ -1,5 +1,9 @@
 
 // test algorithm
+
+// load config
+require('dotenv').config({path: './development.env'});
+
 const fs = require('fs');
 const path = require('path');
 const _ = require('lodash');
@@ -25,12 +29,14 @@ let profitsUsd = [];
 
 let hrstart, hrend;
 
-let startFrom = 1200;
-let processCount = 500;
+let startFrom = 0;
+let processCount = 5000;
 let count = 0;
 logFiles = logFiles.slice(startFrom, logFiles.length - 1);
 logFiles.forEach((logFile, i) => {
     // console.log(`Processing file: ${logFile}`);
+    // handle files with 10 step
+    if(i % 10 !== 0) return;
     count += 1;
     if(count >= processCount) return;
     let index = i + startFrom;

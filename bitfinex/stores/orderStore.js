@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const moment = require('moment');
 
+const bitfinexConstants = require('../bitfinexConstants.js');
+
 module.exports = class OrderStore {
     constructor(){
         this.clear();
@@ -54,5 +56,20 @@ module.exports = class OrderStore {
     getOrderByCid(cid){
         let order = this.orders.find(o => o.CID === cid);
         return order || null;
+    }
+
+    getActiveOrders(){
+        let orders = this.orders.filter(o => o.ORDER_STATUS == bitfinexConstants.orderStatuses.ACTIVE);
+        return orders;
+    }
+
+    checkActiveOrders(){
+        return this.getActiveOrders().length !== 0;
+    }
+
+    checkOrderActiveByCid(cid){
+        let order = this.getOrderByCid(cid);
+        if(!order) return false;
+        return order.ORDER_STATUS == bitfinexConstants.orderStatuses.ACTIVE;
     }
 }

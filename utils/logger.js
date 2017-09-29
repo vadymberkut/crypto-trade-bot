@@ -27,12 +27,23 @@ class Logger {
         this.telegramBot = new TelegramBot({httpApiToken: process.env.TELEGRAM_HTTP_API_TOKEN});
     }
 
-    log(message){
-        console.log(message);
+    log(){
+        console.log.apply(console, arguments);
     }
 
     info(message){
         console.info(colors.green(message));
+    }
+
+    infoImportant(message){
+        console.info(colors.green(message));
+
+        // send message to telegram bot with data as JSON
+        let botMessage = message;
+        this.telegramBot.sendMessage({
+            chat_id: '375693371',
+            text: botMessage,
+        });
     }
 
     warn(message, warnData = null){
