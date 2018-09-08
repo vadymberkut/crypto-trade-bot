@@ -219,13 +219,13 @@ class BitfinexBot {
                         this.authInfo = message;
 
                         
-                        this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.6, -10);
-                        this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.3, 10);
-                        this.bitfinexOrderChain.process(() => {
-                            logger.infoImportant('ORDERS PROCESSED');
-                            this.bitfinexOrderChain.save();
-                            this.bitfinexOrderChain.clear();
-                        });
+                        // this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.6, -10);
+                        // this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, 'tIOTUSD', 0.3, 10);
+                        // this.bitfinexOrderChain.process(() => {
+                        //     logger.infoImportant('ORDERS PROCESSED');
+                        //     this.bitfinexOrderChain.save();
+                        //     this.bitfinexOrderChain.clear();
+                        // });
                     }
                     else{
                         logger.error(`auth error`, message);
@@ -475,7 +475,9 @@ class BitfinexBot {
         let circlePathAlgorithm, solutions;
         try{
             circlePathAlgorithm = new CirclePathAlgorithm(
-                this.bookStore, 
+                this.bookStore,
+                bitfinexHelper.getMaxVolumeCurrencies(), 
+                bitfinexHelper.getMaxVolumePairs(),
                 this.currency, 
                 this.maxAmount, 
                 this.minPathLength, 
@@ -508,7 +510,7 @@ class BitfinexBot {
         // let json = fs.readFileSync(fileName2, 'utf8');
         // let obj = JSON.parse(json);
         // bookStore.initBookFromObject(obj);
-        // circlePathAlgorithm = new CirclePathAlgorithm(bookStore, 'IOT', 2000, 3, 5, 0.01, 0.002, bitfinexHelper);
+        // circlePathAlgorithm = new CirclePathAlgorithm(bookStore,bitfinexHelper.getMaxVolumeCurrencies(), bitfinexHelper.getMaxVolumePairs(), 'IOT', 2000, 3, 5, 0.01, 0.002, bitfinexHelper);
         // solutions = circlePathAlgorithm.solve();
         
         hrstart = process.hrtime();
@@ -538,20 +540,6 @@ class BitfinexBot {
         // the order chain will continue processing
         let instructions = solution.instructions;
 
-        // TEST
-        // instructions = [
-        //     {
-        //         transition: 'tIOTUSD',
-        //         actionPrice: 0.53505,
-        //         actionAmount: -4.81,
-        //     },
-        //     {
-        //         transition: 'tIOTUSD',
-        //         actionPrice: 0.53265,
-        //         actionAmount: 4.81
-        //     }
-        // ];
-
         // check min order size
         let allMoreThanMinSize = instructions.reduce((res, ins) => {
             if(ins.transition === null) return res && true;
@@ -565,21 +553,22 @@ class BitfinexBot {
             return
         }
 
+        instructions.filter(ins => ins.isEnd === false).forEach((ins) => {
+            this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, ins.transition, ins.actionPrice, ins.actionAmount);
+        });
+
         setTimeout(()=>{
             this.trading = false;
             this.lastTradingMs = (new Date()).getTime();
         }, 60000);
         return;
 
-        instructions.forEach((ins) => {
-            this._addNewOrderRequestToChain(bitfinexConstants.orderTypes.EXCHANGE_LIMIT, ins.transition, ins.actionPrice, ins.actionAmount);
-        });
-        this.bitfinexOrderChain.process(() => {
-            this.trading = false;
-            this.lastTradingMs = (new Date()).getTime();
-            this.bitfinexOrderChain.save();
-            this.bitfinexOrderChain.clear();
-        });
+        // this.bitfinexOrderChain.process(() => {
+        //     this.trading = false;
+        //     this.lastTradingMs = (new Date()).getTime();
+        //     this.bitfinexOrderChain.save();
+        //     this.bitfinexOrderChain.clear();
+        // });
         hrend = process.hrtime(hrstart);
         executionMs = hrend[1]/1000000;
     }

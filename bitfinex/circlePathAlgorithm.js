@@ -9,7 +9,7 @@ const MAX_PATH_LENGTH = 6;
 const MIN_PATH_PROFIT = 0.01;
 
 module.exports = class CirclePathAlgorithm {
-    constructor(bookStore, startState, maxStartStateAmount, minPathLength = 3, maxPathLength = 5, minPathProfitUsd = 0.50, transitionFee = 0.002, exchangeHelper){
+    constructor(bookStore, currencies, pairs, startState, maxStartStateAmount, minPathLength = 3, maxPathLength = 5, minPathProfitUsd = 0.50, transitionFee = 0.002, exchangeHelper){
         if(!bookStore){
             throw new Error(`CirclePathAlgorithm: bookStore can't be null or empty`);
         }
@@ -27,6 +27,8 @@ module.exports = class CirclePathAlgorithm {
         }
         
         this.bookStore = bookStore;
+        this.currencies = currencies;
+        this.pairs = pairs;
         this.startState = startState;
         this.maxStartStateAmount = maxStartStateAmount;
         this.minPathLength = minPathLength;
@@ -45,11 +47,11 @@ module.exports = class CirclePathAlgorithm {
 
     _buildGraph(){
         // TODO - consider gettting states from available wallets
-        this.graphStates = this.bookStore.getStoredCurrencies();
+        this.graphStates = this.currencies;
 
         // get state transitions (currency pair names) e.g. {symbol: tIOTUSD, state1: IOT, state2: USD, bidirectional: true}
-        let bookPairs = this.bookStore.getStoredPairs();
-        this.graphStateTransitions = bookPairs.map((p) => {
+        let pairs = this.pairs;
+        this.graphStateTransitions = pairs.map((p) => {
             let {base, qoute} = this.exchangeHelper.convertPairToCurrency(p);
             return {
                 symbol: this.exchangeHelper.convertPairToSymbol(p),
@@ -246,7 +248,7 @@ module.exports = class CirclePathAlgorithm {
                     let action = null;
                     let side = null;
                     if(i !== path.length - 1){
-                        action = this.bookStore.getSymbolAction(transition, state);
+                        action = this.exchangeHelper.getSymbolAction(transition, state);
                         if(action === null){
                             throw new Error(`CirclePathAlgorithm: can't find action (buy/sell) for ${state} using transition ${transition}`);
                         }

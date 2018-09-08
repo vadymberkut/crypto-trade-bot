@@ -2,19 +2,88 @@ module.exports = {
     API_VERSION: 2,
     symbols: [
         'tBTCUSD', 
-        'tBCHUSD', 'tBCHBTC', 'tBCHETH',
+
+        'tBCHUSD', 
+        'tBCHBTC', 
+        'tBCHETH',
+
         'tETHUSD', 'tETHBTC',
+
         'tETCUSD', 'tETCBTC',
+
         'tLTCUSD', 'tLTCBTC',
-        'tIOTUSD', 'tIOTBTC', 'tIOTETH',
-        'tNEOUSD', 'tNEOBTC', 'tNEOETH',
+
+        'tIOTUSD', 
+        'tIOTBTC', 
+        'tIOTETH',
+
+        'tNEOUSD', 
+        'tNEOBTC', 
+        'tNEOETH',
+
         'tSANUSD', 'tSANBTC', 'tSANETH',
         'tXMRUSD', 'tXMRBTC',
-        'tOMGUSD', 'tOMGBTC', 'tOMGETH',
+
+        'tOMGUSD', 
+        'tOMGBTC', 
+        'tOMGETH',
+
         'tZECUSD', 'tZECBTC',
         'tDSHUSD', 'tDSHBTC',
         'tXRPUSD', 'tXRPBTC',
-        'tEOSUSD', 'tEOSBTC', 'tEOSETH'
+        
+        'tEOSUSD', 
+        'tEOSBTC', 
+        'tEOSETH',
+
+        'tRRTUSD',
+        'tRRTBTC',
+
+        'tBCCUSD',
+        'tBCCBTC',
+
+        'tBCUUSD',
+        'tBCUBTC',
+
+        'tETPUSD',
+        'tETPBTC',
+        'tETPETH',
+    ],
+    maxVolumeSymbols: [
+        'tBTCUSD', 
+
+        'tBCHUSD', 
+        'tBCHBTC', 
+        // 'tBCHETH',
+
+        'tETHUSD', 'tETHBTC',
+
+        'tETCUSD', 'tETCBTC',
+
+        'tLTCUSD', 'tLTCBTC',
+
+        'tIOTUSD', 
+        'tIOTBTC', 
+        // 'tIOTETH',
+
+        'tNEOUSD', 
+        'tNEOBTC', 
+        // 'tNEOETH',
+
+        // 'tSANUSD', 'tSANBTC', 'tSANETH',
+        'tXMRUSD', 'tXMRBTC',
+
+        'tOMGUSD', 
+        'tOMGBTC', 
+        // 'tOMGETH',
+
+        'tZECUSD', 'tZECBTC',
+        'tDSHUSD', 'tDSHBTC',
+        // 'tXRPUSD', 'tXRPBTC',
+        
+        // 'tEOSUSD', 
+        // 'tEOSBTC', 
+        // 'tEOSETH'
     ],
     orderTypes: {
         MARKET: 'MARKET',

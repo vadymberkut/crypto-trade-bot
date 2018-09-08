@@ -171,21 +171,7 @@ module.exports = class BookStore {
         return symbol || null;
     }
 
-    // tIOTUSD, IOT -> sell
-    // tIOTUSD, USD -> buy
-    getSymbolAction(symbol, currency){
-        let regex1 = new RegExp(`^t${currency}[A-Z]{3}$`);
-        let regex2 = new RegExp(`^t\[A-Z]{3}${currency}$`);
-        let action = null;
-        
-        if(regex1.test(symbol)){
-            action = 'sell';
-        }
-        else if(regex2.test(symbol)){
-            action = 'buy';
-        }
-        return action;
-    }
+    
 
     // symbol - tIOTUSD
     // action - buy | sell

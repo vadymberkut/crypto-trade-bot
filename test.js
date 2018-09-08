@@ -9,6 +9,7 @@ const path = require('path');
 const _ = require('lodash');
 const CirclePathAlgorithm = require('./bitfinex/circlePathAlgorithm.js');
 const BookStore = require('./bitfinex/stores/bookStore.js');
+const bitfinexConstants = require('./bitfinex/bitfinexConstants.js');
 const bitfinexHelper = require('./bitfinex/bitfinexHelper.js');
 
 // // // TEST FROM ONE FILE
@@ -57,23 +58,32 @@ logFiles.forEach((logFile, i) => {
     
         let bookStore = new BookStore();
         bookStore.initBookFromObject(obj);
-        let circlePathAlgorithm = new CirclePathAlgorithm(bookStore, startState, maxAmount, 3, 4, 5, 0.002, bitfinexHelper);
+        let circlePathAlgorithm = new CirclePathAlgorithm(
+            bookStore, 
+            bitfinexHelper.getMaxVolumeCurrencies(), 
+            bitfinexHelper.getMaxVolumePairs(), 
+            startState, 
+            maxAmount, 
+            3, 4, 1, 0.002, 
+            bitfinexHelper
+        );
 
         let solutions = circlePathAlgorithm.solve();
 
         if(solutions.length === 0){
-            console.log(`file ${index}: profit solution not found`);
+            // console.log(`file ${index}: profit solution not found`);
             return;
         }
     
         // take 1 profit
-        let profit = solutions[0].estimatedProfit;
-        let profitUsd = solutions[0].estimatedProfitUsd;
+        let solution = solutions[0];
+        let profit = solution.estimatedProfit;
+        let profitUsd = solution.estimatedProfitUsd;
         profits.push(profit);
         profitsUsd.push(profitUsd);
 
         hrend = process.hrtime(hrstart);
-        console.log(`file ${index}: +${profit} ${startState}, +${profitUsd} USD. ${hrend[0]}s ${hrend[1]/1000000}ms. (${logFile})`);
+        console.log(`file ${index}: +${profit} ${startState}, +${profitUsd} USD, LEN=${solution.pathLengthActions} PATH=${JSON.stringify(solution.path)}. ${hrend[0]}s ${hrend[1]/1000000}ms. (${logFile})`);
     }
     catch(e){
         console.log(`file ${index}: error - `, e);

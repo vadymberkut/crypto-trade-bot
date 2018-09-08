@@ -8,6 +8,10 @@ Phase 1:
 Phase 2:
   ✔ store wallet info as book info (to determine accurate amount) @done (17-09-26 21:23)
   ☐ CHECK min order amount for all pairs (in alg and chain)
+    ☐ AMOUNT > BALANCE
+    ☐ ORDER not paced and not executed within set timeout
+  ☐ @critical STOP BOT ON REQUEST
+  ☐ Change price after timeout (increase/decrease)
   ☐ TELEGRAM
     ☐ telegram api models
     ☐ getUpdates

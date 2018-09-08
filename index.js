@@ -12,10 +12,10 @@ const bitfinexBot = new BitfinexBot({
     apiKey: process.env.BITFINEX_API_KEY,
     apiSecret: process.env.BITFINEX_API_SECRET,
     currency: 'IOT',
-    maxAmount: 1000,
+    maxAmount: 100,
     minPathLength: 3,
     maxPathLength: 4,
-    minPathProfitUsd: 5 
+    minPathProfitUsd: 1
 });
 bitfinexBot.start();
 
