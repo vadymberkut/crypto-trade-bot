@@ -41,7 +41,6 @@ function getMinOrderSize(currency){
     return bitfinexConstants.minOrderSize['OTHER'];
 }
 
-
 class BitfinexBot {
     constructor(options){
         this.apiKey = options.apiKey;
@@ -86,8 +85,6 @@ class BitfinexBot {
         this.telegramBot = new TelegramBot({httpApiToken: process.env.TELEGRAM_HTTP_API_TOKEN});
         this.saveBookInterval = setInterval(() => {
             this.bookStore.saveBook();
-        // }, 60000);
-        // }, 5000);
         }, 30000);
 
         // this.telegramBot.getMe().then((user)=>{
@@ -96,7 +93,6 @@ class BitfinexBot {
         // this.telegramBot.sendMessage({
         //     chat_id: '375693371',
         //     text: 'Hi from bot',
-
         // }).then((res)=>{
         // });
 

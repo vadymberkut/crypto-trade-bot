@@ -1,54 +1,62 @@
 
-Phase 1:
-   ✔ wss @done (17-09-25 18:27)
-   ✔ bookStore @done (17-09-25 18:27)
-   ✔ algorithm core @done (17-09-25 18:27)
-   ✔ tests @done (17-09-25 18:27)
 
-Phase 2:
-  ✔ store wallet info as book info (to determine accurate amount) @done (17-09-26 21:23)
-  ☐ CHECK min order amount for all pairs (in alg and chain)
-    ☐ AMOUNT > BALANCE
-    ☐ ORDER not paced and not executed within set timeout
-  ☐ @critical STOP BOT ON REQUEST
-  ☐ Change price after timeout (increase/decrease)
-  ☐ TELEGRAM
-    ☐ telegram api models
-    ☐ getUpdates
-    ☐ store users
-    ☐ store channels
-  ☐ Handle order erros in chain - if first - cancel chain, else - rerty n times then notify in telegram
-  ☐ ON STOP - wait path finished
-  ☐ handle WS close
-  ☐ catch errors
-  ☐ log somewhere
-  ☐ test on bitfinex real
-  ☐ check Platform Status and cancel orders
-  ☐ check balance
-  ☐ rollback if filed processing path
-  ☐ deploy to heroku
+1. Circle path:
 
-take 5 IOT for tests
+  Phase 1:
+     ✔ wss @done (17-09-25 18:27)
+     ✔ bookStore @done (17-09-25 18:27)
+     ✔ algorithm core @done (17-09-25 18:27)
+     ✔ tests @done (17-09-25 18:27)
 
-Simulation
+  Phase 2:
+    ✔ store wallet info as book info (to determine accurate amount) @done (17-09-26 21:23)
+    ☐ CHECK min order amount for all pairs (in alg and chain)
+      ☐ AMOUNT > BALANCE
+      ☐ ORDER not paced and not executed within set timeout
+    ☐ @critical STOP BOT ON REQUEST
+    ☐ Change price after timeout (increase/decrease)
+    ☐ TELEGRAM
+      ☐ telegram api models
+      ☐ getUpdates
+      ☐ store users
+      ☐ store channels
+    ☐ Handle order erros in chain - if first - cancel chain, else - rerty n times then notify in telegram
+    ☐ ON STOP - wait path finished
+    ☐ handle WS close
+    ☐ catch errors
+    ☐ log somewhere
+    ☐ test on bitfinex real
+    ☐ check Platform Status and cancel orders
+    ☐ check balance
+    ☐ rollback if filed processing path
+    ☐ deploy to heroku
 
-Before fix for minStateTotalInUsd
-with fee 0.02% and reducing by 20%  - +102$
-without fee - +2036$
-with fee and without reducing by 20% - +105.87$
+  take 5 IOT for tests
 
-After fix
-with fee 0.02% and reducing by 20% - 100.01$
+  Simulation
 
-1000 IOT -> x0.00180 ETH -> 1.8 ETH
-1.8 ETH -> x0.07375 BTC -> 0.13275 BTC
-0.13275 BTC -> x0.00013015 -> 1019.97 IOT
-+ 19.97 IOT
+  Before fix for minStateTotalInUsd
+  with fee 0.02% and reducing by 20%  - +102$
+  without fee - +2036$
+  with fee and without reducing by 20% - +105.87$
 
-0.5% book - 5999$
-0.25% book - 4585$
-0.25% book and +-0.05% price change - 3786$
-0.25% book and +-0.05% price change and min 1$ est profit - 
+  After fix
+  with fee 0.02% and reducing by 20% - 100.01$
+
+  1000 IOT -> x0.00180 ETH -> 1.8 ETH
+  1.8 ETH -> x0.07375 BTC -> 0.13275 BTC
+  0.13275 BTC -> x0.00013015 -> 1019.97 IOT
+  + 19.97 IOT
+
+  0.5% book - 5999$
+  0.25% book - 4585$
+  0.25% book and +-0.05% price change - 3786$
+  0.25% book and +-0.05% price change and min 1$ est profit - 
+
+
+2. Volatility range:
+  
+
 
 TELEGRAM BOT:
   name: VBCryptoTradeBot

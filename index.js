@@ -1,11 +1,11 @@
+
 // load config
 require('dotenv').config({path: './development.env'});
 
-const express = require('express');
 const _ = require('lodash');
 const logger = require('./utils/logger');
-const app = express();
-const port = 3000;
+
+//#region Bots setup
 
 const BitfinexBot = require('./bitfinex/bitfinexBot.js');
 const bitfinexBot = new BitfinexBot({
@@ -19,40 +19,20 @@ const bitfinexBot = new BitfinexBot({
 });
 bitfinexBot.start();
 
-// // log
-// app.use((request, response, next) => {
-//     console.log('proccessing request');
-//     next();
-// });
+//#endregion
 
-// app.get('/', (request, response) => {
-//     response.send('Этот город боится меня. Я видел его истинное лицо...');
-// });
-
-// app.get('/testerr', (request, response) => {
-//     throw new Error("Oops!");
-// });
-
-// // handle errors - The error handler function should be the last function added with app.use
-// app.use((err, request, response, next) => {
-//     console.error(err);
-//     response.status(500).send('Something broke!');
-// });
-
-// app.listen(port, (err) => {
-//     if(err){
-//         return console.log('server error: ', err);
-//     }
-//     console.log(`server is listening on port ${port}`);
-// });
+//#region Error handling
 
 // handle process stop
 process.on('exit', processExitHandler.bind(null, {cleanup: true}));
+
 // ctrl-c
-process.on('SIGINT', processExitHandler.bind(null, {cleanup: false, exit:true})); 
+process.on('SIGINT', processExitHandler.bind(null, {cleanup: false, exit:true}));
+
 // catches "kill pid" (for example: nodemon restart)
 process.on('SIGUSR1', processExitHandler.bind(null, {cleanup: true, exit:true}));
 process.on('SIGUSR2', processExitHandler.bind(null, {cleanup: true, exit:true}));
+
 //catches uncaught exceptions
 process.on('uncaughtException', processExitHandler.bind(null, {cleanup: true, exit:true}));
 
@@ -61,48 +41,52 @@ function processExitHandler(options, err){
         
     }
     if(err){
-        console.log('uncaught exception. exiting...');
+        console.log('Uncaught exception. Exiting...');
         console.error(err);
     }
     if(options.exit){
-        console.log('exiting...');
+        console.log('Exiting...');
         bitfinexBot.stop().then(() => {
-            logger.infoImportant('bitfinex bot gracefully stopped');
+            logger.infoImportant('Bitfinex bot gracefully stopped');
             process.exit();
         }).catch((err)=>{
-            logger.error(`error occured while stoping bitfinex bot: `, err);
+            logger.error(`Error occurred while stopping bitfinex bot: `, err);
         });
     }
 }
 
+//#endregion
+
+//#region Test code
+
 // test rest api
-const bitfinexApi = require('./bitfinex/bitfinexApi.js');
+// const bitfinexApi = require('./bitfinex/bitfinexApi.js');
 // bitfinexApi.platformStatus().then((data)=>{
 
 // });
 
 // bitfinexApi.tickers('tBTCUSD').then((data)=>{
-    
+
 // });
 // bitfinexApi.tickers('tBTCUSD,tETHUSD').then((data)=>{
-    
+
 // });
 // bitfinexApi.tickers('fUSD').then((data)=>{
-    
+
 // });
 
 // bitfinexApi.books('tBTCUSD').then((data)=>{
-    
+
 // });
 // bitfinexApi.books('fUSD').then((data)=>{
-    
+
 // });
 
-// test algorithm
-const fs = require('fs');
-const path = require('path');
-const CirclePathAlgorithm = require('./bitfinex/circlePathAlgorithm.js');
-const BookStore = require('./bitfinex/stores/bookStore.js');
+// // test algorithm
+// const fs = require('fs');
+// const path = require('path');
+// const CirclePathAlgorithm = require('./bitfinex/circlePathAlgorithm.js');
+// const BookStore = require('./bitfinex/stores/bookStore.js');
 
 // // TEST FROM ONE FILE
 // let startState = 'ETH';
@@ -123,3 +107,4 @@ const BookStore = require('./bitfinex/stores/bookStore.js');
 // let hrend = process.hrtime(hrstart);
 // console.info("Execution time: %ds %dms", hrend[0], hrend[1]/1000000);
 
+//#endregion
