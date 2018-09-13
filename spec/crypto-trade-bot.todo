@@ -1,6 +1,6 @@
 
-
-1. Circle path:
+✘ Version 1: @cancelled (18-09-13 21:33)
+  ✘ 1. Circle path strategy: @cancelled (18-09-13 21:31)
 
   Phase 1:
      ✔ wss @done (17-09-25 18:27)
@@ -11,7 +11,6 @@
   Phase 2:
     ✔ store wallet info as book info (to determine accurate amount) @done (17-09-26 21:23)
     ☐ CHECK min order amount for all pairs (in alg and chain)
-      ☐ AMOUNT > BALANCE
       ☐ ORDER not paced and not executed within set timeout
     ☐ @critical STOP BOT ON REQUEST
     ☐ Change price after timeout (increase/decrease)
@@ -53,9 +52,16 @@
   0.25% book and +-0.05% price change - 3786$
   0.25% book and +-0.05% price change and min 1$ est profit - 
 
+Version 2:
 
-2. Volatility range:
-  
+  Infrastructure setup:
+    ☐ Design first app schema
+    ☐ 
+    ☐ Plugin EsLint
+
+
+  2. Volatility range strategy:
+
 
 
 TELEGRAM BOT:

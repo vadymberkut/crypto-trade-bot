@@ -2,10 +2,10 @@
 
 ### Exchanges details
     (maker/taker)
-    1. Binance 0.1/0.1
-    2. Bitmex -0.0250/0.0750
-    3. HitBTC 0 - 0.01/0.1 
-    4. 1Broker - 0/0 but floating spread
+    1. Binance 0.1/0.1 LONG
+    2. Bitmex -0.0250/0.0750 LONG/SHORT
+    3. HitBTC 0 - 0.01/0.1 LONG
+    4. 1Broker - 0/0 but floating spread LONG/SHORT
     
 
 ### Strategies list
