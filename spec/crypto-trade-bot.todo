@@ -55,8 +55,31 @@
 Version 2:
 
   Infrastructure setup:
-    ☐ Design first app schema
-    ☐ 
+    ✔ Design first app schema @done (18-09-13 23:39)
+    
+
+    ☐ Logger
+      ☐ Use everywhere
+      ☐ Store logs to files
+      ☐ Handle app crash case, so the logs are saved
+
+    ☐ Telegram
+      ☐ Use message queue with prority so messages sent in correct order
+
+    ☐ Bitmex WS API own implementation
+    ☐ DataSouce
+    ☐ DataStore
+    ☐ DataCollector
+
+    ☐ Qute visualizer
+      ☐ Display chart
+        ☐ Line
+        ☐ Bars
+        ☐ Candles
+      ☐ Draw trades
+        ☐ Complated
+        ☐ Pending
+
     ☐ Plugin EsLint
 
 
