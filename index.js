@@ -34,6 +34,7 @@ function processExitHandler(options, err){
     }
     if(options.exit){
         logger.log('Exiting...');
+        process.exit();
     }
 }
 

@@ -22,7 +22,6 @@ class App {
 
         // Run app logic here
         try {
-            throw new Error('1111')
             this.tradingBots.forEach(tb => tb.start());
         } catch(err) {
             // Handle error and then rethrow
