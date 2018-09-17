@@ -67,6 +67,13 @@ class Logger {
         });
         this.telegramBot = new TelegramBot(config.telegram);
         this._saveToFile = _.throttle(this._saveToFile.bind(this), config.logger.saveInterval);
+
+        for(let i = 1; i < 10; i++) {
+            this.telegramBot.sendMessageQueue({
+                chat_id: '375693371', // TODO: use config
+                text: "Text" + i,
+            });
+        }
     }
 
     /**
@@ -108,19 +115,14 @@ class Logger {
             if(current.model.type === messageType.ERROR) {
                 botMessage = botMessage + os.EOL + current.model.stack;
             }
-            this.telegramBot.sendMessage({
+            // Async
+            this.telegramBot.sendMessageQueue({
                 chat_id: '375693371', // TODO: use config
                 text: botMessage,
-            }).then(response => {
-                let { ok, result } = response;
-                if(ok === false) {
-                    throw result;
-                }
-            }).catch(err => {
-                this.error(err);
             });
         }
 
+        // Async
         this._saveToFile(current.model).catch(err => {
             console.error(`Logger: can't save logs to file. Error: `, err);
         });
@@ -190,12 +192,32 @@ class Logger {
     }
 
 
-    log(){
-        console.log.apply(console, arguments);
+    log(message, data = null){
+        let model = this._buildLogModel(message, messageType.LOG, data);
+
+        console.log(`${model.message}`);
+
+        this.queue.add({
+            priority: messagePriority.LOG,
+            timestamp: moment().valueOf(),
+            notify: false,
+            model: model
+        });
+        this._process();
     }
 
-    logImportant(){
-        console.log.apply(console, arguments);
+    logImportant(message, data = null){
+        let model = this._buildLogModel(message, messageType.LOG, data);
+
+        console.log(`${model.message}`);
+
+        this.queue.add({
+            priority: messagePriority.LOG,
+            timestamp: moment().valueOf(),
+            notify: true,
+            model: model
+        });
+        this._process();
     }
 
     info(message, data = null){

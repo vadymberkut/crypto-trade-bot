@@ -57,11 +57,10 @@ Version 2:
   Infrastructure setup:
     ✔ Design first app schema @done (18-09-13 23:39)
     
-
-    ☐ Logger
-      ☐ Use everywhere
-      ☐ Store logs to files
-      ☐ Handle app crash case, so the logs are saved
+    ✔ Logger @done (18-09-17 20:17)
+      ✔ Use everywhere @done (18-09-17 19:41)
+      ✔ Store logs to files @done (18-09-17 19:41)
+      ✔ Handle app crash case, so the logs are saved @done (18-09-17 20:17)
 
     ☐ Telegram
       ☐ Use message queue with prority so messages sent in correct order
