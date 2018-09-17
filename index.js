@@ -30,17 +30,10 @@ function processExitHandler(options, err){
         
     }
     if(err){
-        logger.log('Uncaught exception. Exiting...');
         logger.error(err);
     }
     if(options.exit){
         logger.log('Exiting...');
-        App.stop().then(() => {
-            logger.infoImportant('App gracefully stopped');
-            process.exit();
-        }).catch((err)=>{
-            logger.error(`Error occurred while stopping App: `, err);
-        });
     }
 }
 

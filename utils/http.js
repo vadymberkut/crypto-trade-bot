@@ -1,8 +1,9 @@
 const axios = require('axios');
+const logger = require('./logger');
 
 class Http {
     
-    //make http requests using axios (see config fields here https://github.com/mzabriskie/axios)
+    // Make http requests using axios (see config fields here https://github.com/mzabriskie/axios)
     static axios(config){
         return Http._axiosRequest(config);
     }
@@ -20,14 +21,9 @@ class Http {
             config.url = '/' + config.url
 
         return axios(config).then((response)=>{
-            //console.log("HTTP response received: ",response);
             return response.data;
         }).catch((err)=>{
-            console.error("HTTP request error: ", `${err.response.status}: ${err.response.statusText}`);
-            // if(err && err.response && error.err.status === 401){
-            //     window.OidcUserManager.signinRedirect(); //Login Using IdentityServer4
-            // }
-            // return {};
+            logger.error("HTTP request error: ", `${err.response.status}: ${err.response.statusText}`, err.response);
             throw err;
         })
     }
