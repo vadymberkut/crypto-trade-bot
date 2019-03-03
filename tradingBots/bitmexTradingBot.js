@@ -1,8 +1,9 @@
 
 const config = require('../config/index');
 const logger = require('../utils/logger');
-const Api = require('../api/bitmexApi');
 const BaseTradingBot = require('./baseTradingBot');
+const Api = require('../api/bitmexApi');
+const DataCollector = require('../dataCollectors/bitmexDataCollector');
 
 // const DataCollector = require('../dataCollectors/bitmexDataCollector');
 // const Strategy = require('../strategies/volatilityRangeStrategy');
@@ -10,30 +11,27 @@ const BaseTradingBot = require('./baseTradingBot');
 
 class TradingBot  extends BaseTradingBot {
     constructor(props) {
+        let api = new Api(config.bot['bitmex'].api);
         super({
             name: 'bitmex',
             config: config.bot['bitmex'],
-            api: null
+            api: api,
+            dataCollector: new DataCollector({
+                api: api
+            })
         });
     }
 
     start() {
         super.start();
-
-        // Start means to create a client
-        this.api = new Api(this.config.api);
     }
 
-    stop(force = false) {
+    async stop(force = false) {
         super.stop();
-
-        return Promise.resolve();
     }
 
-    restart(force = false) {
+    async restart(force = false) {
         super.restart();
-
-        return Promise.resolve();
     }
 }
 

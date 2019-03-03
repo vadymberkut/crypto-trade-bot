@@ -61,12 +61,24 @@ Version 2:
       ✔ Use everywhere @done (18-09-17 19:41)
       ✔ Store logs to files @done (18-09-17 19:41)
       ✔ Handle app crash case, so the logs are saved @done (18-09-17 20:17)
+      ☐ On unhandled exception log sent in telegram but didn't have time to save in file
 
-    ☐ Telegram
-      ☐ Use message queue with prority so messages sent in correct order
+    ☐ Exceptions
+      ☐ Shut down gracefully when unhandled exception occured
+      ☐ Ensure logs are saved and message is SENT to telegram!
+
+    ✔ Telegram @done (18-09-17 20:36)
+      ✔ Use message queue with prority so messages sent in correct order @done (18-09-17 20:36)
 
     ☐ Bitmex WS API own implementation
-    ☐ DataSouce
+    ☐ DataSouce/APi
+      ☐ WebSocket API
+      ☐ Subscription system
+        ☐ sub to table
+        ☐ sub to symbol
+        ☐ sub to table and symbol
+        ☐ filter subs on the same table for different symbols
+        ☐ callbacks manage subsystem
     ☐ DataStore
     ☐ DataCollector
 
@@ -90,3 +102,6 @@ TELEGRAM BOT:
   name: VBCryptoTradeBot
   username: cryptotradevbot
   HTTP API token: 455874865:AAEZC8f0kuXTmmmn_dS-9POITX9n_IVwpGo
+
+https://www.testnet.bitmex.com/
+https://testnet.bitmex.com

@@ -67,13 +67,6 @@ class Logger {
         });
         this.telegramBot = new TelegramBot(config.telegram);
         this._saveToFile = _.throttle(this._saveToFile.bind(this), config.logger.saveInterval);
-
-        for(let i = 1; i < 10; i++) {
-            this.telegramBot.sendMessageQueue({
-                chat_id: '375693371', // TODO: use config
-                text: "Text" + i,
-            });
-        }
     }
 
     /**
@@ -195,7 +188,7 @@ class Logger {
     log(message, data = null){
         let model = this._buildLogModel(message, messageType.LOG, data);
 
-        console.log(`${model.message}`);
+        console.log(`${model.message}`, data || '');
 
         this.queue.add({
             priority: messagePriority.LOG,
@@ -209,7 +202,7 @@ class Logger {
     logImportant(message, data = null){
         let model = this._buildLogModel(message, messageType.LOG, data);
 
-        console.log(`${model.message}`);
+        console.log(`${model.message}`, data || '');
 
         this.queue.add({
             priority: messagePriority.LOG,
@@ -223,7 +216,7 @@ class Logger {
     info(message, data = null){
         let model = this._buildLogModel(message, messageType.INFO, data);
 
-        console.info(colors.green(`${model.message}`));
+        console.info(colors.green(`${model.message}`), data || '');
 
         this.queue.add({
             priority: messagePriority.INFO,
@@ -237,7 +230,7 @@ class Logger {
     infoImportant(message, data = null){
         let model = this._buildLogModel(message, messageType.INFO, data);
 
-        console.info(colors.green(`${model.message}`));
+        console.info(colors.green(`${model.message}`), data || '');
 
         this.queue.add({
             priority: messagePriority.INFO,
@@ -251,7 +244,7 @@ class Logger {
     warn(message, data = null){
         let model = this._buildLogModel(message, messageType.WARNING, data);
 
-        console.warn(colors.yellow(`${model.message}`));
+        console.warn(colors.yellow(`${model.message}`), data || '');
 
         this.queue.add({
             priority: messagePriority.WARNING,
@@ -265,7 +258,7 @@ class Logger {
     warnImportant(message, data = null){
         let model = this._buildLogModel(message, messageType.WARNING, data);
 
-        console.warn(colors.yellow(`${model.message}`));
+        console.warn(colors.yellow(`${model.message}`), data || '');
 
         this.queue.add({
             priority: messagePriority.WARNING,
@@ -278,9 +271,14 @@ class Logger {
 
     error(message, data = null){
         let model = this._buildLogModel(message, messageType.ERROR, data);
-        model.stack = model.stack || (new Error()).stack;
+        
+        if(!model.stack && data instanceof Error) {
+            model.stack = data.stack;
+        } else {
+            model.stack = model.stack || (new Error()).stack;
+        }
 
-        console.error(colors.red(`${model.message}`));
+        console.error(colors.red(`${model.message}`), data || '');
 
         this.queue.add({
             priority: messagePriority.ERROR,
@@ -293,9 +291,14 @@ class Logger {
 
     errorImportant(message, data = null){
         let model = this._buildLogModel(message, messageType.ERROR, data);
-        model.stack = model.stack || (new Error()).stack;
 
-        console.error(colors.red(`${model.message}`));
+        if(!model.stack && data instanceof Error) {
+            model.stack = data.stack;
+        } else {
+            model.stack = model.stack || (new Error()).stack;
+        }
+
+        console.error(colors.red(`${model.message}`), data || '');
 
         this.queue.add({
             priority: messagePriority.ERROR,

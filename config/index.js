@@ -28,8 +28,12 @@ let config = {
                 api: {
                     apiKeyId: process.env.BITMEX_API_KEY_ID,
                     apiKeySecret: process.env.BITMEX_API_KEY_SECRET,
-                    testnet: true,
-                    maxTableLen: 20000
+                    // testnet: true,
+                    // maxTableLen: 20000,
+                    wsUrl: 'wss://testnet.bitmex.com',
+                    wsEndpoint: '/realtime',
+                    wsReconnectionInterval: 500,
+                    httpUrl: '',
                 },
                 strategy: 'NOT SET'
             }
