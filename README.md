@@ -1,5 +1,26 @@
 # Crypto trading bot v2
 
+### Configuration
+
+/config/.env
+
+
+```
+NODE_ENV=development
+
+# Bitfinex
+BITFINEX_API_KEY=
+BITFINEX_API_SECRET=
+
+# Bitmex
+BITMEX_API_KEY_ID=
+BITMEX_API_KEY_SECRET=
+
+#Telegram (token to send messages using bot)
+TELEGRAM_HTTP_API_TOKEN=455874865:AAEZC8f0kuXTmmmn_dS-9POITX9n_IVwpGo
+```
+
+
 ### Exchanges details
     (maker/taker)
     1. Binance 0.1/0.1 LONG
