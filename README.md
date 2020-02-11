@@ -1,5 +1,11 @@
 # Crypto trading bot v2
 
+Written on NodeJs.
+
+Aim: try to find profitable algorithm to trade on cryptocurrency exchange.
+
+Result: tests on real data shown that a lot of cases weren't taken into account. Bot is unprofitable and uncompleted.
+
 ### Configuration
 
 /config/.env
@@ -17,7 +23,7 @@ BITMEX_API_KEY_ID=
 BITMEX_API_KEY_SECRET=
 
 #Telegram (token to send messages using bot)
-TELEGRAM_HTTP_API_TOKEN=455874865:AAEZC8f0kuXTmmmn_dS-9POITX9n_IVwpGo
+TELEGRAM_HTTP_API_TOKEN=
 ```
 
 
