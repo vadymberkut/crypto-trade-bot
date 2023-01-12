@@ -15,7 +15,7 @@
   "homepage": "https://bitbucket.org/vadimberkut/crypto-trade-bot#readme",
   "dependencies": {
     "axios": "^0.16.2",
-    "class-validator": "^0.7.2",
+    "class-validator": "^0.14.0",
     "colors": "^1.1.2",
     "data-model": "0.0.2",
     "dotenv": "^4.0.0",
